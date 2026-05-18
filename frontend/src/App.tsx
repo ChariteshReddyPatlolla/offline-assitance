@@ -251,30 +251,65 @@ function PdfViewer({ onOpenInChat }: { onOpenInChat: (text: string, explanation:
   };
 
   useEffect(() => { if (pdfDoc) renderPage(pdfDoc, currentPage); }, [pdfDoc, currentPage]);
+  
+const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-      GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
-      const ab = await file.arrayBuffer();
-      const doc = await getDocument({ data: ab }).promise;
-      setPdfDoc(doc);
-      setNumPages(doc.numPages);
-      setCurrentPage(1);
+  setUploading(true);
 
-      // Upload to backend for full document chat support
-      const form = new FormData();
-      form.append('file', file);
-      const res = await axios.post(`${API}/pdf/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setUploadedPath(res.data.filepath);
+  try {
+    // Step 1: Upload PDF to backend
+    const form = new FormData();
+    form.append("file", file);
 
-    } catch (err) {
-      alert('Could not load PDF. ' + err);
-    } finally { setUploading(false); }
-  };
+    const uploadRes = await axios.post(
+      `${API}/pdf/upload`,
+      form,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+
+    console.log("Upload response:", uploadRes.data);
+
+    // Save uploaded path returned by backend
+    setUploadedPath(uploadRes.data.filepath);
+
+    // Step 2: Load PDF locally for viewing
+    const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
+
+    GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/build/pdf.worker.min.mjs",
+      import.meta.url
+    ).toString();
+
+    const arrayBuffer = await file.arrayBuffer();
+    const doc = await getDocument({ data: arrayBuffer }).promise;
+
+    setPdfDoc(doc);
+    setNumPages(doc.numPages);
+    setCurrentPage(1);
+  } catch (err: any) {
+    console.error("PDF upload/load error:", err);
+
+    if (err.response) {
+      alert(
+        `Upload failed (${err.response.status}): ` +
+        JSON.stringify(err.response.data)
+      );
+    } else {
+      alert("Could not load PDF: " + err.message);
+    }
+  } finally {
+    setUploading(false);
+
+    // Optional: reset input so same file can be selected again
+    e.target.value = "";
+  }
+};
 
   const handleMouseUp = async (e: React.MouseEvent) => {
     const selected = window.getSelection()?.toString().trim();
