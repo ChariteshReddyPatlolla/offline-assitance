@@ -1,6 +1,7 @@
 import os
 import subprocess
 from langchain_core.tools import tool
+from shared.context import active_session_dir
 
 
 def _run_git(args: list, cwd: str) -> str:
@@ -29,6 +30,10 @@ def git_status(repo_path: str) -> str:
     Get the git status of a repository at the given path.
     Shows modified, staged, and untracked files.
     """
+    current_dir = active_session_dir.get()
+    if current_dir and not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+
     return _run_git(["status", "--short"], repo_path)
 
 
@@ -40,6 +45,10 @@ def git_log(repo_path: str, n: int = 10) -> str:
         repo_path: path to the git repository
         n: number of commits to show (default 10)
     """
+    current_dir = active_session_dir.get()
+    if current_dir and not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+
     return _run_git(["log", f"--oneline", f"-{n}"], repo_path)
 
 
@@ -48,6 +57,10 @@ def git_diff(repo_path: str) -> str:
     """
     Show uncommitted changes (git diff) in the repository.
     """
+    current_dir = active_session_dir.get()
+    if current_dir and not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+
     return _run_git(["diff"], repo_path)
 
 
@@ -57,6 +70,10 @@ def analyze_repo(repo_path: str) -> str:
     Analyze a git repository: show its file structure, README, and recent commits.
     Use this when the user asks to understand, summarize, or explain a repository.
     """
+    current_dir = active_session_dir.get()
+    if current_dir and not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+
     output_parts = []
 
     # File tree (2 levels deep)

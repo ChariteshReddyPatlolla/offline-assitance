@@ -1,5 +1,6 @@
 import os
 from langchain_core.tools import tool
+from shared.context import active_session_dir
 
 
 @tool
@@ -11,6 +12,10 @@ def extract_pdf_text(filepath: str) -> str:
         filepath: absolute or relative path to the PDF file
     """
     try:
+        current_dir = active_session_dir.get()
+        if current_dir and not os.path.isabs(filepath):
+            filepath = os.path.join(current_dir, filepath)
+
         from pypdf import PdfReader
         reader = PdfReader(filepath)
         pages_text = []

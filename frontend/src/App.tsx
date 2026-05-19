@@ -4,7 +4,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   BrainCircuit, PlusSquare, MessageSquare, FileText, Settings,
-  Mic, MicOff, Send, Trash2, ChevronLeft, Sun, Moon, Pin, Database
+  Mic, MicOff, Send, Trash2, ChevronLeft, Sun, Moon, Pin, Database,
+  Minimize2, Maximize2
 } from 'lucide-react';
 import axios from 'axios';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -392,6 +393,8 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const userId = getUserId();
+  const [compactMode, setCompactMode] = useState(false);
+  const prevGeometryRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
 
   // Apply theme
   useEffect(() => {
@@ -411,6 +414,51 @@ export default function App() {
       setAlwaysOnTop(newState);
     } catch (e) {
       console.warn("Tauri window API not available", e);
+    }
+  };
+
+  const handleToggleCompact = async (compact: boolean) => {
+    try {
+      const appWindow = getCurrentWindow();
+      if (compact) {
+        // Save current geometry to restore later
+        const size = await appWindow.innerSize();
+        const factor = await appWindow.scaleFactor();
+        const physicalPos = await appWindow.outerPosition();
+        
+        prevGeometryRef.current = {
+          width: Math.round(size.width / factor),
+          height: Math.round(size.height / factor),
+          x: Math.round(physicalPos.x / factor),
+          y: Math.round(physicalPos.y / factor)
+        };
+        
+        // Dynamic backend resize (applies Win32 style transformations)
+        await axios.post(`${API}/desktop/resize`, { compact: true });
+        setCompactMode(true);
+      } else {
+        // Dynamic backend resize (restores normal geometry & normal native window decorations)
+        await axios.post(`${API}/desktop/resize`, { compact: false });
+        
+        // Wait briefly for Win32 to restore styles before moving
+        setTimeout(async () => {
+          if (prevGeometryRef.current) {
+            const { width, height, x, y } = prevGeometryRef.current;
+            // Set size and position back to their original geometries
+            await appWindow.setSize(new (await import('@tauri-apps/api/dpi')).LogicalSize(width, height));
+            await appWindow.setPosition(new (await import('@tauri-apps/api/dpi')).LogicalPosition(x, y));
+          }
+          setCompactMode(false);
+        }, 100);
+      }
+    } catch {
+      // Win32 fallback resizing for Microsoft Edge App Mode
+      try {
+        await axios.post(`${API}/desktop/resize`, { compact });
+        setCompactMode(compact);
+      } catch (err) {
+        console.warn("Resize failed", err);
+      }
     }
   };
 
@@ -534,6 +582,73 @@ export default function App() {
     'Explain this shell command: ls -la 🖥️',
   ];
 
+  if (compactMode) {
+    return (
+      <div className="app compact-mode">
+        <div className="main" data-tauri-drag-region>
+          <div className="input-area" data-tauri-drag-region>
+            <div className="input-wrap" data-tauri-drag-region>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={e => { setInput(e.target.value); }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                placeholder={listening ? "Listening..." : "Message OmniAgent…"}
+                rows={1}
+              />
+              <button 
+                className={`icon-btn inline-control pin-btn ${alwaysOnTop ? 'active' : ''}`} 
+                onClick={toggleAlwaysOnTop} 
+                title="Toggle Always on Top"
+                style={{ color: alwaysOnTop ? 'var(--accent)' : 'var(--text-3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Pin size={16} />
+              </button>
+              <button 
+                className="icon-btn inline-control max-btn" 
+                onClick={() => handleToggleCompact(false)} 
+                title="Restore Full Window"
+                style={{ color: 'var(--text-3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Maximize2 size={16} />
+              </button>
+              <VoiceButton 
+                onTranscript={t => {
+                  const cleaned = t.replace(/[^a-zA-Z0-9]/g, '').trim();
+                  if (cleaned.length === 0) return;
+
+                  setMessages(prev => [...prev, {
+                    id: `voice_${Date.now()}`,
+                    role: 'assistant',
+                    content: `🎙️ **Voice Input Received:**\n> "${t}"\n\nShould I send this command?`,
+                    created_at: new Date().toISOString(),
+                    approval_request: {
+                      action_key: `voice_send_${Date.now()}`,
+                      session_id: sessionId || 'voice_input',
+                      original_message: t
+                    },
+                    approvalState: 'pending'
+                  }]);
+                }} 
+                disabled={loading} 
+                isListening={setListening}
+              />
+              {loading ? (
+                <div className="icon-btn send" style={{ opacity: 0.7, cursor: 'wait' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>...</span>
+                </div>
+              ) : (
+                <button className="icon-btn send" onClick={() => sendMessage()} disabled={!input.trim()}>
+                  <Send size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {/* ── Sidebar ── */}
@@ -543,7 +658,7 @@ export default function App() {
           OmniAgent
         </div>
 
-        <button className="new-chat-btn" onClick={() => { setSessionId(null); setMessages([]); setPage('chat'); }}>
+        <button className="new-chat-btn" onClick={() => { setSessionId(null); setMessages([]); setPage('chat'); handleToggleCompact(false); }}>
           <PlusSquare size={16} /> New Chat
         </button>
 
@@ -586,6 +701,9 @@ export default function App() {
           </span>
           <button className={`topbar-btn ${alwaysOnTop ? 'active' : ''}`} onClick={toggleAlwaysOnTop} title="Toggle Always on Top (Floating Widget)" style={{ color: alwaysOnTop ? 'var(--accent)' : '' }}>
             <Pin size={16} />
+          </button>
+          <button className="topbar-btn minimize-maximize-btn" onClick={() => handleToggleCompact(true)} title="Minimize to Floating Search Bar">
+            <Minimize2 size={16} />
           </button>
           <button className="topbar-btn" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} title="Toggle theme">
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}

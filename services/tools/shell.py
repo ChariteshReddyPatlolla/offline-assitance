@@ -4,6 +4,7 @@ import logging
 from langchain_core.tools import tool
 
 from services.tools.approval_store import require_approval
+from shared.context import active_session_dir
 from services.tools.safety import (
     should_require_shell_approval,
     should_force_reapproval,
@@ -72,13 +73,24 @@ def execute_shell_command(command: str) -> str:
     try:
         logger.info("Executing shell command: %s", command)
 
+        current_dir = active_session_dir.get()
+        if not current_dir or not os.path.isdir(current_dir):
+            user_profile = os.environ.get("USERPROFILE", r"C:\Users\patlo")
+            fallback_desktop = os.path.join(user_profile, "Desktop")
+            onedrive_desktop = os.path.join(user_profile, "OneDrive", "Desktop")
+            if os.path.exists(onedrive_desktop):
+                fallback_desktop = onedrive_desktop
+            cwd_dir = fallback_desktop
+        else:
+            cwd_dir = current_dir
+
         result = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
             timeout=120,
-            cwd=os.getcwd(),
+            cwd=cwd_dir,
         )
 
         stdout = (result.stdout or "").strip()
@@ -144,14 +156,9 @@ def open_url_in_browser(url: str) -> str:
 
     url = url.strip()
 
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-
     try:
-        from services.tools.browser import _open_in_chrome
-
-        _open_in_chrome(url)
-        return f"✅ Opened '{url}' in Google Chrome."
+        from services.tools.browser import open_url_in_browser as browser_open_url
+        return browser_open_url.invoke({"url": url})
 
     except Exception as e:
         logger.exception("Error opening URL")

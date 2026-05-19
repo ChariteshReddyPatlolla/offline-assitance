@@ -25,6 +25,11 @@ class Session(BaseModel):
     title: Optional[str] = "New Chat"
     created_at: datetime
     updated_at: datetime
+    current_app: Optional[str] = None
+    current_directory: Optional[str] = None
+    current_file: Optional[str] = None
+    open_tabs: Optional[str] = None
+    last_action: Optional[str] = None
 
     class Config:
         from_attributes = True

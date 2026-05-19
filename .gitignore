@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+omniagent.db
+*.db
+*.sqlite
+
+# Environment variables
+.env
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# Scratch files
+scratch_ddg*
+*.html
+*.png
+
+# Node modules & frontend builds
+node_modules/
+dist/
+build/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Rust/Tauri build artifacts
+frontend/src-tauri/target/
+
+# IDE / System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

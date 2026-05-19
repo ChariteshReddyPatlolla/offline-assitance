@@ -23,6 +23,13 @@ class Session(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+    # Contextual Memory State
+    current_app = Column(String, nullable=True)
+    current_directory = Column(String, nullable=True)
+    current_file = Column(String, nullable=True)
+    open_tabs = Column(Text, nullable=True)  # JSON-serialized list of URLs
+    last_action = Column(String, nullable=True)
+
     user = relationship("User", back_populates="sessions")
     messages = relationship("Message", back_populates="session", cascade="all, delete-orphan")
 

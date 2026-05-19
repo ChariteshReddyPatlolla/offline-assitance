@@ -15,6 +15,17 @@ from langchain_core.tools import tool
 
 from services.tools.approval_store import require_approval
 from services.tools.safety import should_require_path_approval
+from shared.context import active_session_dir
+
+
+def _get_fallback_desktop() -> str:
+    user_profile = os.environ.get("USERPROFILE", r"C:\Users\patlo")
+    desktop = os.path.join(user_profile, "Desktop")
+    onedrive_desktop = os.path.join(user_profile, "OneDrive", "Desktop")
+    if os.path.exists(onedrive_desktop):
+        return onedrive_desktop
+    return desktop
+
 
 
 # ============================================================================
@@ -33,6 +44,10 @@ def read_file(filepath: str) -> str:
     - Check logs
     """
     try:
+        current_dir = active_session_dir.get() or _get_fallback_desktop()
+        if not os.path.isabs(filepath):
+            filepath = os.path.join(current_dir, filepath)
+
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -57,14 +72,23 @@ def read_file(filepath: str) -> str:
 # ============================================================================
 
 @tool
-def write_file(filepath: str, content: str) -> str:
+def write_file(filepath: str, content: str, open_in_editor: str = None) -> str:
     """
     Write content to a file.
+
+    Parameters:
+    - filepath: The path to write the file.
+    - content: The content to write.
+    - open_in_editor: Optional. Open the file in an active editor after writing. Supported values: 'vscode' (opens in VS Code), 'notepad' (opens in Notepad).
 
     Security:
     - Writing to protected paths requires approval.
     - Approval prompt includes file path and content preview.
     """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(current_dir, filepath)
+
     abs_path = os.path.abspath(filepath)
 
     # Determine whether this path requires approval
@@ -103,9 +127,35 @@ def write_file(filepath: str, content: str) -> str:
         with open(abs_path, "w", encoding="utf-8") as f:
             f.write(content)
 
+        # Automatically open in editor if requested
+        editor_msg = ""
+        if open_in_editor:
+            editor_lower = open_in_editor.lower().strip()
+            import subprocess
+            if "vscode" in editor_lower or "code" in editor_lower:
+                try:
+                    subprocess.Popen(
+                        ["cmd", "/c", "start", "", "code", abs_path],
+                        shell=False,
+                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+                    )
+                    editor_msg = " and successfully opened in VS Code"
+                except Exception as e_ed:
+                    editor_msg = f" (failed to open in VS Code: {str(e_ed)})"
+            elif "notepad" in editor_lower:
+                try:
+                    subprocess.Popen(
+                        ["cmd", "/c", "start", "", "notepad", abs_path],
+                        shell=False,
+                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+                    )
+                    editor_msg = " and successfully opened in Notepad"
+                except Exception as e_ed:
+                    editor_msg = f" (failed to open in Notepad: {str(e_ed)})"
+
         return (
             f"✅ Successfully wrote {len(content)} characters to:\n"
-            f"`{abs_path}`"
+            f"`{abs_path}`{editor_msg}"
         )
 
     except Exception as e:
@@ -125,6 +175,10 @@ def delete_file(filepath: str) -> str:
     - ALWAYS requires approval.
     - Action is irreversible.
     """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(current_dir, filepath)
+
     abs_path = os.path.abspath(filepath)
 
     protected = should_require_path_approval(abs_path)
@@ -178,6 +232,10 @@ def list_directory(dirpath: str = ".") -> str:
     List the files and folders in a directory.
     """
     try:
+        current_dir = active_session_dir.get() or _get_fallback_desktop()
+        if not os.path.isabs(dirpath):
+            dirpath = os.path.join(current_dir, dirpath)
+
         items = os.listdir(dirpath)
 
         directories = [

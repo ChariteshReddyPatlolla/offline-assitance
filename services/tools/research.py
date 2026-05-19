@@ -27,7 +27,18 @@ def research_topic(query: str) -> str:
         search_url = f"https://duckduckgo.com/?q={encoded}"
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(channel="chrome", headless=True, args=["--no-sandbox"])
+            # Locate Brave Browser if installed
+            from services.tools.browser import get_brave_path
+            brave_path = get_brave_path()
+            
+            try:
+                if brave_path:
+                    browser = p.chromium.launch(executable_path=brave_path, headless=True, args=["--no-sandbox"])
+                else:
+                    browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+            except Exception:
+                browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+                
             page = browser.new_page()
 
             # Step 1: Get search results

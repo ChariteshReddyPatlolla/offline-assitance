@@ -51,3 +51,89 @@ def health_check():
 @app.get("/")
 def root():
     return {"message": "OmniAgent API is running. See /docs for API reference."}
+
+
+from fastapi import Body
+import ctypes
+from ctypes import wintypes
+
+@app.post("/api/desktop/resize")
+async def resize_desktop(payload: dict = Body(...)):
+    compact = payload.get("compact", False)
+    
+    try:
+        EnumWindows = ctypes.windll.user32.EnumWindows
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        GetWindowText = ctypes.windll.user32.GetWindowTextW
+        GetWindowTextLength = ctypes.windll.user32.GetWindowTextLengthW
+        IsWindowVisible = ctypes.windll.user32.IsWindowVisible
+        
+        target_hwnd = None
+        
+        def foreach_window(hwnd, lParam):
+            nonlocal target_hwnd
+            if IsWindowVisible(hwnd):
+                length = GetWindowTextLength(hwnd)
+                buff = ctypes.create_unicode_buffer(length + 1)
+                GetWindowText(hwnd, buff, length + 1)
+                title = buff.value
+                if "OmniAgent" in title or "localhost:5173" in title or "127.0.0.1:5173" in title:
+                    target_hwnd = hwnd
+                    return False
+            return True
+            
+        EnumWindows(EnumWindowsProc(foreach_window), 0)
+        
+        if target_hwnd:
+            GWL_STYLE = -16
+            GWL_EXSTYLE = -20
+            WS_CAPTION = 0x00C00000
+            WS_THICKFRAME = 0x00040000
+            WS_EX_LAYERED = 0x00080000
+            LWA_COLORKEY = 0x00000001
+            
+            GetWindowLong = ctypes.windll.user32.GetWindowLongW
+            SetWindowLong = ctypes.windll.user32.SetWindowLongW
+            SetWindowPos = ctypes.windll.user32.SetWindowPos
+            SetLayeredWindowAttributes = ctypes.windll.user32.SetLayeredWindowAttributes
+            
+            # SWP flags
+            SWP_NOACTIVATE = 0x0010
+            SWP_FRAMECHANGED = 0x0020
+            SWP_SHOWWINDOW = 0x0040
+            
+            current_style = GetWindowLong(target_hwnd, GWL_STYLE)
+            current_exstyle = GetWindowLong(target_hwnd, GWL_EXSTYLE)
+            
+            if compact:
+                # Strip title bar and borders
+                new_style = current_style & ~WS_CAPTION & ~WS_THICKFRAME
+                SetWindowLong(target_hwnd, GWL_STYLE, new_style)
+                
+                # Enable layered window style
+                new_exstyle = current_exstyle | WS_EX_LAYERED
+                SetWindowLong(target_hwnd, GWL_EXSTYLE, new_exstyle)
+                
+                # Fuchsia / Magenta chroma key transparency (0x00FF00FF)
+                SetLayeredWindowAttributes(target_hwnd, 0x00FF00FF, 0, LWA_COLORKEY)
+                
+                # Resize and pin to Always-On-Top
+                HWND_TOPMOST = -1
+                SetWindowPos(target_hwnd, HWND_TOPMOST, 0, 0, 400, 70, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+            else:
+                # Restore title bar and borders
+                new_style = current_style | WS_CAPTION | WS_THICKFRAME
+                SetWindowLong(target_hwnd, GWL_STYLE, new_style)
+                
+                # Remove layered transparency style
+                new_exstyle = current_exstyle & ~WS_EX_LAYERED
+                SetWindowLong(target_hwnd, GWL_EXSTYLE, new_exstyle)
+                
+                # Restore normal size and unpin Always-On-Top
+                HWND_NOTOPMOST = -2
+                SetWindowPos(target_hwnd, HWND_NOTOPMOST, 0, 0, 800, 600, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+    except Exception as e:
+        logger.error(f"Win32 window resize failed: {e}")
+        
+    return {"status": "success", "compact": compact}
+

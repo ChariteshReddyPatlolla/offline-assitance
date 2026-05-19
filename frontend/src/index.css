@@ -410,3 +410,95 @@ html, body, #root {
 .toast.success { border-color: var(--success); }
 .toast.error { border-color: var(--danger); }
 .toast.warning { border-color: var(--warning); }
+
+/* ── Compact Mode (Spotlight Search style) ── */
+.app.compact-mode {
+  background: #161316 !important; /* Fuchsia/Magenta chroma key for absolute desktop transparency */
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: hidden;
+  height: 70px !important;
+  width: 400px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app.compact-mode .main {
+  background: transparent !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.app.compact-mode .input-area {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+}
+
+.app.compact-mode .input-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  height: 100% !important;
+  border-radius: var(--radius) !important;
+  background: #161b22 !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.65) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0 12px 0 16px !important;
+  gap: 8px !important;
+}
+
+.app.compact-mode .input-wrap textarea {
+  height: auto !important;
+  min-height: 24px !important;
+  line-height: 1.4 !important;
+  margin: 0 !important;
+  padding: 4px 0 !important;
+  font-size: 0.95rem !important;
+  color: #ffffff !important;           /* Always pure white text in compact mode */
+  caret-color: #ffffff !important;     /* Always pure white typing cursor */
+  white-space: nowrap !important;      /* Prevent vertical line wrapping completely */
+  overflow-x: auto !important;         /* Allow single-line horizontal scrolling */
+  overflow-y: hidden !important;       /* Lock vertical scroll behavior */
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  resize: none !important;
+}
+
+.app.compact-mode .input-wrap textarea::placeholder {
+  color: rgba(255, 255, 255, 0.45) !important; /* Elegant semi-transparent placeholder */
+}
+
+.app.compact-mode .inline-control {
+  background: transparent !important;
+  border: none !important;
+  width: 32px !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all var(--transition) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.app.compact-mode .inline-control:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--accent) !important;
+}
+
