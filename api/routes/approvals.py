@@ -100,7 +100,7 @@ async def decide_approval(request: schemas.ApproveRequest, db: Session = Depends
                 logger.info("Found matching tool call to run directly: name=%s, args=%s", tc_name, tc_args)
                 
                 # Find the tool in all_tools
-                from services.tools import all_tools
+                from services.agent.graph import all_combined_tools as all_tools
                 tool_func = None
                 for t in all_tools:
                     if getattr(t, "name", t.__class__.__name__) == tc_name:
@@ -133,6 +133,30 @@ async def decide_approval(request: schemas.ApproveRequest, db: Session = Depends
                             filepath = tc_args.get("filepath", "")
                             if filepath:
                                 session.last_action = f"Deleted file {os.path.basename(filepath)}"
+                        elif tc_name == "create_directory":
+                            path = tc_args.get("path", "")
+                            if path:
+                                session.current_directory = os.path.abspath(path)
+                                session.last_action = f"Created directory {os.path.basename(session.current_directory)}"
+                        elif tc_name == "open_application":
+                            app_name = tc_args.get("app_name", "")
+                            if app_name:
+                                session.current_app = app_name
+                                session.last_action = f"Opened application {app_name}"
+                                app_path = tc_args.get("path")
+                                if app_path:
+                                    abs_app_path = os.path.abspath(app_path)
+                                    if os.path.isdir(abs_app_path) or (not os.path.exists(abs_app_path) and not os.path.basename(abs_app_path).count('.')):
+                                        session.current_directory = abs_app_path
+                                    else:
+                                        session.current_file = abs_app_path
+                                        session.current_directory = os.path.dirname(abs_app_path)
+                        elif tc_name == "close_application":
+                            app_name = tc_args.get("app_name", "")
+                            if app_name:
+                                if session.current_app and session.current_app.lower() == app_name.lower():
+                                    session.current_app = None
+                                session.last_action = f"Closed application {app_name}"
                         db.commit()
                     finally:
                         active_session_dir.reset(token)

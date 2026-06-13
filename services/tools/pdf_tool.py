@@ -1,51 +1,87 @@
 import os
 from langchain_core.tools import tool
 from shared.context import active_session_dir
+from services.mcp.client import MCPClientManager
 
+def _get_fallback_desktop() -> str:
+    user_profile = os.environ.get("USERPROFILE", r"C:\Users\patlo")
+    desktop = os.path.join(user_profile, "Desktop")
+    onedrive_desktop = os.path.join(user_profile, "OneDrive", "Desktop")
+    if os.path.exists(onedrive_desktop):
+        return onedrive_desktop
+    return desktop
 
 @tool
 def extract_pdf_text(filepath: str) -> str:
     """
     Extract all text content from a PDF file.
-    Use this when the user uploads or references a PDF document.
-    Args:
-        filepath: absolute or relative path to the PDF file
     """
-    try:
-        current_dir = active_session_dir.get()
-        if current_dir and not os.path.isabs(filepath):
-            filepath = os.path.join(current_dir, filepath)
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(current_dir, filepath)
+    abs_path = os.path.abspath(filepath)
 
-        from pypdf import PdfReader
-        reader = PdfReader(filepath)
-        pages_text = []
-        for i, page in enumerate(reader.pages):
-            text = page.extract_text()
-            if text:
-                pages_text.append(f"[Page {i+1}]\n{text}")
-        if not pages_text:
-            return "No text could be extracted from the PDF."
-        full_text = "\n\n".join(pages_text)
-        # Limit to first 8000 chars to avoid token overflow
-        if len(full_text) > 8000:
-            return full_text[:8000] + "\n\n[... PDF truncated to first 8000 characters ...]"
-        return full_text
-    except ImportError:
-        return "❌ pypdf is not installed. Run: pip install pypdf"
-    except FileNotFoundError:
-        return f"❌ File not found: {filepath}"
-    except Exception as e:
-        return f"❌ Error reading PDF: {str(e)}"
-
+    return MCPClientManager.get_instance().call_tool(
+        "pdf", "extract_pdf_text", filepath=abs_path
+    )
 
 @tool
 def summarize_pdf(filepath: str) -> str:
     """
     Extract text from a PDF and prepare it for summarization.
-    Returns the extracted text with an instruction to summarize.
-    Use this when the user asks to summarize a PDF.
     """
-    text = extract_pdf_text.invoke({"filepath": filepath})
-    if text.startswith("❌"):
-        return text
-    return f"Please summarize the following PDF content:\n\n{text}"
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(current_dir, filepath)
+    abs_path = os.path.abspath(filepath)
+
+    return MCPClientManager.get_instance().call_tool(
+        "pdf", "summarize_pdf", filepath=abs_path
+    )
+
+@tool
+def extract_pdf_tables(filepath: str) -> str:
+    """
+    Extract tables from PDF using layout analysis.
+    """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(current_dir, filepath)
+    abs_path = os.path.abspath(filepath)
+    return MCPClientManager.get_instance().call_tool(
+        "pdf", "extract_pdf_tables", filepath=abs_path
+    )
+
+@tool
+def split_pdf(filepath: str, page_range: str, output_path: str) -> str:
+    """
+    Split a PDF by a page range (e.g. '1-3', '1,3,5', or '2').
+    """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(current_dir, filepath)
+    if not os.path.isabs(output_path):
+        output_path = os.path.join(current_dir, output_path)
+    abs_path = os.path.abspath(filepath)
+    abs_out_path = os.path.abspath(output_path)
+    return MCPClientManager.get_instance().call_tool(
+        "pdf", "split_pdf", filepath=abs_path, page_range=page_range, output_path=abs_out_path
+    )
+
+@tool
+def merge_pdfs(filepaths: list[str], output_path: str) -> str:
+    """
+    Merge multiple PDFs into a single output PDF.
+    """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    abs_paths = []
+    for fp in filepaths:
+        if not os.path.isabs(fp):
+            fp = os.path.join(current_dir, fp)
+        abs_paths.append(os.path.abspath(fp))
+    if not os.path.isabs(output_path):
+        output_path = os.path.join(current_dir, output_path)
+    abs_out_path = os.path.abspath(output_path)
+    return MCPClientManager.get_instance().call_tool(
+        "pdf", "merge_pdfs", filepaths=abs_paths, output_path=abs_out_path
+    )

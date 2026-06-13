@@ -1,3 +1,5 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import logging
 import asyncio
 from fastapi import FastAPI, Depends, HTTPException

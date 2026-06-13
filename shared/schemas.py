@@ -14,6 +14,7 @@ class Message(MessageBase):
     created_at: datetime
     tools_used: Optional[List[str]] = []
     approval_request: Optional[Dict[str, Any]] = None
+    checklist_request: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -56,6 +57,14 @@ class ApproveRequest(BaseModel):
     user_id: str
     original_message: str
     approved: bool
+
+
+class ChecklistSubmitRequest(BaseModel):
+    action_key: str
+    session_id: str
+    user_id: str
+    selected_items: List[Dict[str, Any]]
+    original_message: str
 
 
 class ExplainRequest(BaseModel):

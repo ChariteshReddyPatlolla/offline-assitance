@@ -269,6 +269,31 @@ html, body, #root {
 .approval-decided.approved { color: var(--success); }
 .approval-decided.denied { color: var(--danger); }
 
+/* ── Checklist Card ─────────────────────────── */
+.checklist-card {
+  margin-top: 12px; padding: 14px 16px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+.checklist-card-title {
+  font-size: 0.9rem; font-weight: 600; color: var(--accent);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+}
+.checklist-items {
+  display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; padding-right: 4px;
+}
+.checklist-item {
+  display: flex; gap: 12px; padding: 10px; border-radius: var(--radius-sm);
+  background: var(--bg-3); border: 1px solid transparent; cursor: pointer;
+  transition: all var(--transition); align-items: flex-start;
+}
+.checklist-item:hover { border-color: var(--border); background: var(--bg-glass); }
+.checklist-item.selected { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+.checklist-item input[type="checkbox"] { margin-top: 4px; cursor: pointer; accent-color: var(--accent); }
+.checklist-item-content { flex: 1; min-width: 0; }
+.checklist-item-title { font-size: 0.85rem; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
+.checklist-item-desc { font-size: 0.75rem; color: var(--text-2); line-height: 1.4; }
+
 /* ── Typing Dots ─────────────────────────── */
 .typing-dots { display: flex; gap: 5px; align-items: center; padding: 4px 0; }
 .typing-dots span {

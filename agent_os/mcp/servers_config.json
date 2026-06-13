@@ -1,0 +1,34 @@
+{
+    "mcpServers": {
+        "filesystem": {
+            "command": "python",
+            "args": ["-m", "agent_os.mcp_servers.filesystem_server"],
+            "env": {}
+        },
+        "shell": {
+            "command": "python",
+            "args": ["-m", "agent_os.mcp_servers.shell_server"],
+            "env": {}
+        },
+        "playwright": {
+            "command": "python",
+            "args": ["-m", "agent_os.mcp_servers.playwright_server"],
+            "env": {}
+        },
+        "email": {
+            "command": "python",
+            "args": ["-m", "agent_os.mcp_servers.email_server"],
+            "env": {}
+        },
+        "git": {
+            "command": "python",
+            "args": ["-m", "agent_os.mcp_servers.git_server"],
+            "env": {}
+        },
+        "vscode": {
+            "command": "python",
+            "args": ["-m", "agent_os.mcp_servers.vscode_server"],
+            "env": {}
+        }
+    }
+}

@@ -1,112 +1,133 @@
 import os
-import subprocess
 from langchain_core.tools import tool
 from shared.context import active_session_dir
+from services.tools.approval_store import require_approval
+from services.mcp.client import MCPClientManager
 
-
-def _run_git(args: list, cwd: str) -> str:
-    try:
-        result = subprocess.run(
-            ["git"] + args,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        out = result.stdout.strip()
-        err = result.stderr.strip()
-        if result.returncode != 0 and err:
-            return f"Git error: {err}"
-        return out if out else "(no output)"
-    except FileNotFoundError:
-        return "Error: git is not installed or not in PATH."
-    except Exception as e:
-        return f"Error running git: {str(e)}"
-
+def _get_fallback_desktop() -> str:
+    user_profile = os.environ.get("USERPROFILE", r"C:\Users\patlo")
+    desktop = os.path.join(user_profile, "Desktop")
+    onedrive_desktop = os.path.join(user_profile, "OneDrive", "Desktop")
+    if os.path.exists(onedrive_desktop):
+        return onedrive_desktop
+    return desktop
 
 @tool
 def git_status(repo_path: str) -> str:
     """
     Get the git status of a repository at the given path.
-    Shows modified, staged, and untracked files.
     """
-    current_dir = active_session_dir.get()
-    if current_dir and not os.path.isabs(repo_path):
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
         repo_path = os.path.join(current_dir, repo_path)
-
-    return _run_git(["status", "--short"], repo_path)
-
+    abs_path = os.path.abspath(repo_path)
+    
+    return MCPClientManager.get_instance().call_tool(
+        "git", "git_status", repo_path=abs_path
+    )
 
 @tool
 def git_log(repo_path: str, n: int = 10) -> str:
     """
     Get the last N git commits of a repository.
-    Args:
-        repo_path: path to the git repository
-        n: number of commits to show (default 10)
     """
-    current_dir = active_session_dir.get()
-    if current_dir and not os.path.isabs(repo_path):
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
         repo_path = os.path.join(current_dir, repo_path)
+    abs_path = os.path.abspath(repo_path)
 
-    return _run_git(["log", f"--oneline", f"-{n}"], repo_path)
-
+    return MCPClientManager.get_instance().call_tool(
+        "git", "git_log", repo_path=abs_path, n=n
+    )
 
 @tool
 def git_diff(repo_path: str) -> str:
     """
     Show uncommitted changes (git diff) in the repository.
     """
-    current_dir = active_session_dir.get()
-    if current_dir and not os.path.isabs(repo_path):
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
         repo_path = os.path.join(current_dir, repo_path)
+    abs_path = os.path.abspath(repo_path)
 
-    return _run_git(["diff"], repo_path)
-
+    return MCPClientManager.get_instance().call_tool(
+        "git", "git_diff", repo_path=abs_path
+    )
 
 @tool
 def analyze_repo(repo_path: str) -> str:
     """
     Analyze a git repository: show its file structure, README, and recent commits.
-    Use this when the user asks to understand, summarize, or explain a repository.
     """
-    current_dir = active_session_dir.get()
-    if current_dir and not os.path.isabs(repo_path):
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
         repo_path = os.path.join(current_dir, repo_path)
+    abs_path = os.path.abspath(repo_path)
 
-    output_parts = []
+    return MCPClientManager.get_instance().call_tool(
+        "git", "analyze_repo", repo_path=abs_path
+    )
 
-    # File tree (2 levels deep)
-    try:
-        tree_lines = []
-        for root, dirs, files in os.walk(repo_path):
-            # Skip hidden dirs and common noise
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', '__pycache__', 'venv', '.git')]
-            depth = root.replace(repo_path, '').count(os.sep)
-            if depth > 2:
-                continue
-            indent = '  ' * depth
-            tree_lines.append(f"{indent}{os.path.basename(root)}/")
-            for f in files[:10]:
-                tree_lines.append(f"{indent}  {f}")
-        output_parts.append("📁 File Structure:\n" + "\n".join(tree_lines[:60]))
-    except Exception as e:
-        output_parts.append(f"(Could not read file tree: {e})")
+@tool
+def git_add(repo_path: str, file_pattern: str = "*") -> str:
+    """
+    Stage changes in the repository.
+    """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+    abs_path = os.path.abspath(repo_path)
 
-    # README
-    for readme_name in ("README.md", "README.txt", "readme.md"):
-        readme_path = os.path.join(repo_path, readme_name)
-        if os.path.exists(readme_path):
-            try:
-                with open(readme_path, "r", encoding="utf-8") as f:
-                    content = f.read(2000)
-                output_parts.append(f"\n📄 README:\n{content}")
-            except Exception:
-                pass
-            break
+    return MCPClientManager.get_instance().call_tool(
+        "git", "git_add", repo_path=abs_path, file_pattern=file_pattern
+    )
 
-    # Recent commits
-    commits = _run_git(["log", "--oneline", "-10"], repo_path)
-    output_parts.append(f"\n📝 Recent Commits:\n{commits}")
+@tool
+def git_commit(repo_path: str, message: str) -> str:
+    """
+    Commit staged changes in the repository. Requires explicit user approval.
+    """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+    abs_path = os.path.abspath(repo_path)
 
-    return "\n".join(output_parts)
+    approval = require_approval(
+        action_key=f"git_commit:{abs_path}",
+        description=f"Commit git changes in repo:\n`{abs_path}`\nMessage: '{message}'",
+        details={"repo_path": abs_path, "message": message, "dangerous": True}
+    )
+    if approval:
+        return approval
+
+    return MCPClientManager.get_instance().call_tool(
+        "git", "git_commit", repo_path=abs_path, message=message
+    )
+
+@tool
+def git_checkout(repo_path: str, branch: str) -> str:
+    """
+    Checkout a branch or commit in the repository.
+    """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+    abs_path = os.path.abspath(repo_path)
+
+    return MCPClientManager.get_instance().call_tool(
+        "git", "git_checkout", repo_path=abs_path, branch=branch
+    )
+
+@tool
+def git_branch(repo_path: str) -> str:
+    """
+    List, create, or delete branches in the repository.
+    """
+    current_dir = active_session_dir.get() or _get_fallback_desktop()
+    if not os.path.isabs(repo_path):
+        repo_path = os.path.join(current_dir, repo_path)
+    abs_path = os.path.abspath(repo_path)
+
+    return MCPClientManager.get_instance().call_tool(
+        "git", "git_branch", repo_path=abs_path
+    )

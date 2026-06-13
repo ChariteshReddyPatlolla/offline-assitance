@@ -16,12 +16,12 @@ call .\venv\Scripts\activate
 
 REM Initialize database
 echo [1/4] Initializing database...
-python init_db.py
+.\venv\Scripts\python.exe init_db.py
 echo Done.
 
 REM Start API Gateway
 echo [2/4] Starting API Gateway (port 8000)...
-start "OmniAgent API" cmd /k "call .\venv\Scripts\activate && uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
+start "OmniAgent API" cmd /k ".\venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
 
 REM Wait a moment for API to start
 timeout /t 3 /nobreak >nul

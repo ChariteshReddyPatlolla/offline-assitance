@@ -218,63 +218,116 @@ def get_all_pending() -> list:
 
 
 
-def require_tool_approval(tool_func, force: bool = False):
+def require_tool_approval(tool_obj, force: bool = False):
     """
-    Wrap a LangChain tool so it requests approval before executing.
-
-    Usage:
-        require_tool_approval(write_file)
-        require_tool_approval(delete_file)
-        require_tool_approval(execute_shell_command)
-
-    This preserves your existing approval system and allows tools to be
-    registered like:
-
-        tools = [
-            web_search,
-            require_tool_approval(write_file),
-            require_tool_approval(execute_shell_command),
-        ]
+    Wrap a tool (either a function or a LangChain BaseTool object) so that
+    it requests approval before execution. Handles both sync and async tools.
     """
-    original_func = getattr(tool_func, "func", tool_func)
-    tool_name = getattr(tool_func, "name", original_func.__name__)
-    tool_description = getattr(tool_func, "description", original_func.__doc__)
+    from langchain_core.tools import BaseTool
+    import os
+    
+    if isinstance(tool_obj, BaseTool):
+        tool_name = tool_obj.name
+        tool_description = tool_obj.description
+    else:
+        original_func = getattr(tool_obj, "func", tool_obj)
+        tool_name = getattr(tool_obj, "name", original_func.__name__)
+        tool_description = getattr(tool_obj, "description", original_func.__doc__)
+
+    def get_action_key(*args, **kwargs):
+        args_dict = kwargs.copy() if kwargs else {}
+        if not args_dict and args and isinstance(args[0], str):
+            args_dict["path"] = args[0]
+        
+        filepath = args_dict.get("filepath") or args_dict.get("path")
+        if tool_name in ("write_file", "delete_file", "edit_file", "create_directory") and filepath:
+            try:
+                abs_path = os.path.abspath(str(filepath))
+                if tool_name == "write_file":
+                    return f"write:{abs_path}"
+                elif tool_name == "delete_file":
+                    return f"delete:{abs_path}"
+                else:
+                    return f"{tool_name}:{abs_path}"
+            except Exception:
+                pass
+        return f"{tool_name}:{repr(args)}:{repr(kwargs)}"
+
+    if isinstance(tool_obj, BaseTool):
+        original_run = tool_obj._run
+        original_arun = tool_obj._arun
+
+        def check_approval(*args, **kwargs):
+            args_dict = kwargs if kwargs else list(args)
+            action_key = get_action_key(*args, **kwargs)
+            description = f"Run tool '{tool_name}'"
+            details = {
+                "tool": tool_name,
+                "args": args_dict,
+                "dangerous": True,
+            }
+            
+            approval_response = require_approval(
+                action_key=action_key,
+                description=description,
+                details=details,
+                force=force,
+            )
+            return approval_response
+            
+        if original_arun is not None:
+            @wraps(original_arun)
+            async def wrapped_arun(*args, **kwargs):
+                approval_response = check_approval(*args, **kwargs)
+                if approval_response is not None:
+                    return approval_response
+                return await original_arun(*args, **kwargs)
+            tool_obj._arun = wrapped_arun
+            
+        @wraps(original_run)
+        def wrapped_run(*args, **kwargs):
+            approval_response = check_approval(*args, **kwargs)
+            if approval_response is not None:
+                return approval_response
+            if original_run is not None:
+                try:
+                    return original_run(*args, **kwargs)
+                except Exception:
+                    pass
+            if original_arun is not None:
+                from services.mcp.client import run_sync
+                config = kwargs.pop("config", {})
+                return run_sync(original_arun(*args, config=config, **kwargs))
+            raise NotImplementedError("Tool does not support sync invocation.")
+        tool_obj._run = wrapped_run
+        
+        return tool_obj
+
+    # Otherwise, it's a function. Fall back to existing decoration logic:
+    original_func = getattr(tool_obj, "func", tool_obj)
+    tool_name = getattr(tool_obj, "name", original_func.__name__)
+    tool_description = getattr(tool_obj, "description", original_func.__doc__)
 
     @wraps(original_func)
     def _wrapped(*args, **kwargs):
-        # Build a stable action key
-        action_key = f"{tool_name}:{repr(args)}:{repr(kwargs)}"
-
-        # Human-readable description
+        action_key = get_action_key(*args, **kwargs)
         description = f"Run tool '{tool_name}'"
-
-        # Details used by the approval UI
         details = {
             "tool": tool_name,
             "args": kwargs if kwargs else list(args),
             "dangerous": True,
         }
-
-        # Ask approval
         approval_response = require_approval(
             action_key=action_key,
             description=description,
             details=details,
             force=force,
         )
-
-        # If approval required, return approval token/message
         if approval_response is not None:
             return approval_response
-
-        # Approved -> execute original function
         return original_func(*args, **kwargs)
 
-    # Convert wrapper back into a LangChain tool
     wrapped_tool = lc_tool(_wrapped)
-
-    # Preserve metadata
     wrapped_tool.name = tool_name
     wrapped_tool.description = tool_description
-
     return wrapped_tool
