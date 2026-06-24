@@ -84,20 +84,21 @@ def require_approval(
     # ------------------------------------------------------------------
     message = f"[NEEDS_APPROVAL:{action_key}]\n\n"
 
-    # Human-readable heading
-    message += "## 🔐 Approval Required\n\n"
+    # Standard prefix (invisible token for the parser + user-visible header)
+    message += "## Approval Required\n\n"
 
     # Description
     if description:
         message += f"### Action\n{description}\n\n"
 
-    # Special preview for email actions
+    # Custom rendering based on action type
     if action_key.startswith("email:") or action_key.startswith("send_email:"):
-        to_addr = details.get("to", "")
-        subj = details.get("subject", "")
-        email_body = details.get("body", "")
+        to_addr = details.get("args", {}).get("to", "Unknown Recipient")
+        subj = details.get("args", {}).get("subject", "No Subject")
+        email_body = details.get("args", {}).get("body", "")
+
         message += (
-            "### 📧 Proposed Email Draft\n"
+            "### Proposed Email Draft\n"
             f"> **To:** `{to_addr}`\n"
             f"> **Subject:** *{subj}*\n"
             f"> \n"
@@ -135,7 +136,7 @@ def require_approval(
     # Dangerous notice
     if dangerous:
         message += (
-            "⚠️ This action has been classified as potentially destructive.\n"
+            "WARNING: This action has been classified as potentially destructive.\n"
             "Please review it carefully before approving.\n\n"
         )
 

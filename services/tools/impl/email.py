@@ -91,9 +91,9 @@ def send_email_raw(to: str, subject: str, body: str, attachments: list = None) -
             server = smtplib.SMTP("localhost", 1025, timeout=2)
             server.sendmail("omniagent@localhost", [to], msg.as_string())
             server.quit()
-            return f"✅ Email sent automatically via local debug SMTP server (localhost:1025)!"
+            return f"Success! Email sent automatically via local debug SMTP server (localhost:1025)."
         except Exception:
-            return "❌ SMTP credentials not configured in .env file."
+            return "Failed: SMTP credentials not configured in .env file."
 
     try:
         server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
@@ -103,12 +103,12 @@ def send_email_raw(to: str, subject: str, body: str, attachments: list = None) -
         server.quit()
         
         return (
-            f"🚀 **Email Sent Automatically!**\n\n"
+            f"**Email Sent Automatically!**\n\n"
             f"Successfully connected to `{smtp_server}` and delivered email to `{to}`.\n\n"
             f"**Subject:** {subject}"
         )
     except Exception as e:
-        return f"❌ Failed to send email automatically via SMTP: {str(e)}"
+        return f"Failed to send email automatically via SMTP: {str(e)}"
 
 def read_emails_raw(limit: int = 5) -> str:
     load_dotenv()
@@ -117,7 +117,7 @@ def read_emails_raw(limit: int = 5) -> str:
     sender_password = os.getenv("SENDER_PASSWORD")
     
     if not sender_email or not sender_password:
-        return "❌ Email credentials not configured."
+        return "Failed: Email credentials not configured."
         
     try:
         mail = imaplib.IMAP4_SSL(imap_server)
@@ -125,7 +125,7 @@ def read_emails_raw(limit: int = 5) -> str:
         mail.select("inbox")
         status, messages = mail.search(None, "ALL")
         if status != "OK":
-            return "❌ Failed to search inbox."
+            return "Failed to search inbox."
             
         email_ids = messages[0].split()
         latest_email_ids = email_ids[-limit:]
