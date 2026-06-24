@@ -69,7 +69,8 @@ class ChecklistSubmitRequest(BaseModel):
 
 class ExplainRequest(BaseModel):
     text: str
-
+    question: Optional[str] = None
+    document_id: Optional[str] = None
 
 class ExplainResponse(BaseModel):
     explanation: str

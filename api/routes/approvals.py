@@ -67,9 +67,21 @@ async def decide_approval(request: schemas.ApproveRequest, db: Session = Depends
             tool_call_to_run = None
             for msg in reversed(past_messages):
                 if msg.role == "assistant":
-                    temp_ai_msg = parse_fallback_tool_calls(AIMessage(content=msg.content))
-                    if getattr(temp_ai_msg, "tool_calls", None):
-                        for tc in temp_ai_msg.tool_calls:
+                    tool_calls = []
+                    # First try to load native tool calls saved in DB
+                    if msg.tool_calls:
+                        try:
+                            tool_calls = json.loads(msg.tool_calls)
+                        except Exception:
+                            pass
+                    
+                    # Fallback to parsing from content if empty
+                    if not tool_calls:
+                        temp_ai_msg = parse_fallback_tool_calls(AIMessage(content=msg.content))
+                        tool_calls = getattr(temp_ai_msg, "tool_calls", []) or []
+
+                    if tool_calls:
+                        for tc in tool_calls:
                             tc_name = tc.get("name")
                             tc_args = tc.get("args", {})
                             

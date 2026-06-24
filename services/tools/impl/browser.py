@@ -3,12 +3,25 @@ import urllib.parse
 import webbrowser
 import os
 
+import concurrent.futures
+
 logger = logging.getLogger(__name__)
 
 # State variables for the persistent browser session
 _playwright_context = None
 _active_browser = None
 _active_page = None
+
+# Create a dedicated, single background thread for ALL Playwright operations.
+# Playwright's sync_api strictly requires that the context and browser be
+# interacted with on the exact same thread they were created on, AND that
+# thread must NOT have a running asyncio event loop.
+_playwright_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="PlaywrightWorker")
+
+def run_in_playwright_thread(func, *args, **kwargs):
+    """Executes a function in the dedicated Playwright thread and waits for the result."""
+    future = _playwright_executor.submit(func, *args, **kwargs)
+    return future.result()
 
 def get_brave_path() -> str:
     """Helper to locate the Brave Browser executable on Windows."""
@@ -42,8 +55,7 @@ def _open_in_chrome(url: str):
     except Exception:
         webbrowser.open(url)
 
-def close_persistent_browser() -> bool:
-    """Closes the active persistent Playwright browser page and browser instance gracefully."""
+def _close_persistent_browser_sync() -> bool:
     global _active_browser, _active_page, _playwright_context
     success = False
     try:
@@ -71,8 +83,12 @@ def close_persistent_browser() -> bool:
         
     return success
 
-def _initialize_browser_if_needed():
-    """Initializes the Playwright context and headed browser."""
+def close_persistent_browser() -> bool:
+    """Closes the active persistent Playwright browser page and browser instance gracefully."""
+    return run_in_playwright_thread(_close_persistent_browser_sync)
+
+def _initialize_browser_sync():
+    """Initializes the Playwright context and headed browser (runs in dedicated thread)."""
     global _playwright_context, _active_browser
     
     from playwright.sync_api import sync_playwright
@@ -109,8 +125,10 @@ def _initialize_browser_if_needed():
                 logger.error("Failed to launch standard Chromium: %s", str(e_inner))
                 raise e_inner
 
-def get_active_page():
-    """Returns the active Playwright headed page or initializes a new headed browser session."""
+def _initialize_browser_if_needed():
+    run_in_playwright_thread(_initialize_browser_sync)
+
+def _get_active_page_sync():
     global _active_browser, _active_page
     
     if _active_browser is not None:
@@ -134,13 +152,17 @@ def get_active_page():
                 pass
             _active_browser = None
             
-    _initialize_browser_if_needed()
+    _initialize_browser_sync()
     try:
         _active_page = _active_browser.new_page()
         return _active_page
     except Exception as e:
         logger.error("Failed to create new page: %s", str(e))
         raise e
+
+def get_active_page():
+    """Returns the active Playwright headed page or initializes a new headed browser session."""
+    return run_in_playwright_thread(_get_active_page_sync)
 
 def focus_browser_window():
     global _active_page

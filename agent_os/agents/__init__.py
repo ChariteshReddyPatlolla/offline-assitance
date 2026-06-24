@@ -21,6 +21,7 @@ from .antigravity_orchestrator import AntigravityOrchestratorAgent
 from .development import DevelopmentLoop
 from .testing import RecoveryAgent
 from .completion import ProjectCompletionAgent
+from .security_agent import SecurityAgent
 
 __all__ = [
     "BaseAgent",
@@ -45,5 +46,6 @@ __all__ = [
     "AntigravityOrchestratorAgent",
     "DevelopmentLoop",
     "RecoveryAgent",
-    "ProjectCompletionAgent"
+    "ProjectCompletionAgent",
+    "SecurityAgent"
 ]

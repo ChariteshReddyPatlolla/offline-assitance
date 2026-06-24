@@ -40,7 +40,19 @@ def _extract_checklist_request(content: str) -> dict | None:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-r = redis.Redis(host='localhost', port=6379, db=0)
+_redis_client = None
+
+def get_redis():
+    """Lazy Redis connection with retry."""
+    global _redis_client
+    if _redis_client is None:
+        try:
+            _redis_client = redis.Redis(host='localhost', port=6379, db=0, protocol=2)
+            _redis_client.ping()
+        except redis.ConnectionError:
+            _redis_client = None
+            raise
+    return _redis_client
 
 @contextmanager
 def get_db():
@@ -52,7 +64,8 @@ def get_db():
 
 def process_task(task_payload):
     session_id = task_payload["session_id"]
-    file_path = task_payload["file_path"]
+    target_hwnd = task_payload.get("target_hwnd")
+    target_title = task_payload.get("target_title")
     langchain_messages = messages_from_dict(task_payload["messages"])
 
     logger.info("Starting background LLM execution for session: %s", session_id)
@@ -66,8 +79,6 @@ def process_task(task_payload):
         ))
     except Exception as e:
         logger.exception("Graph execution failed")
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(f"# Error\nThe background agent encountered an error:\n```\n{str(e)}\n```")
         return
 
     # Extract final response
@@ -119,13 +130,28 @@ def process_task(task_payload):
                     db.add(db_msg)
             db.commit()
 
-    # Write output to the VS Code file so user can see it
+    # Extract clean code without markdown blocks if it's purely code
+    clean_code = agent_response
+    code_match = re.search(r"```[a-zA-Z]*\n(.*?)```", agent_response, re.DOTALL)
+    if code_match:
+        clean_code = code_match.group(1).strip()
+        
+    # Save the generated code to Redis for the auto-pasting workflow
     try:
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(f"# Agent Output\n\n{agent_response}")
-        logger.info("Successfully wrote output to %s", file_path)
+        get_redis().set(f"llm_result:{session_id}", json.dumps({
+            "code": clean_code,
+            "target_hwnd": target_hwnd,
+            "target_title": target_title
+        }))
+        logger.info("Successfully saved generated code to Redis for session %s", session_id)
+        
+        # Notify the user via TTS
+        import pyttsx3
+        engine = pyttsx3.init()
+        engine.say("Code generation is complete. Say 'show me it' to paste.")
+        engine.runAndWait()
     except Exception as e:
-        logger.error("Failed to write to VS Code file: %s", e)
+        logger.error("Failed to save to Redis or notify: %s", e)
 
 
 def main():
@@ -133,7 +159,8 @@ def main():
     while True:
         try:
             # blpop blocks until an item is available
-            item = r.blpop("llm_task_queue", timeout=0)
+            redis_conn = get_redis()
+            item = redis_conn.blpop("llm_task_queue", timeout=5)
             if item:
                 _, payload_bytes = item
                 task_payload = json.loads(payload_bytes.decode('utf-8'))

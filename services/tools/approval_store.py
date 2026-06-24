@@ -92,7 +92,7 @@ def require_approval(
         message += f"### Action\n{description}\n\n"
 
     # Special preview for email actions
-    if action_key.startswith("email:"):
+    if action_key.startswith("email:") or action_key.startswith("send_email:"):
         to_addr = details.get("to", "")
         subj = details.get("subject", "")
         email_body = details.get("body", "")

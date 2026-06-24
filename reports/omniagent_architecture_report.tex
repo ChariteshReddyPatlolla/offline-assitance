@@ -1,0 +1,481 @@
+\documentclass[11pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tcolorbox}
+\usepackage{caption}
+
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+
+% Hyperlink styling
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={OmniAgent Agent Implementation Guide},
+}
+
+% Code snippet styling
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{codeblue}{rgb}{0.1,0.2,0.8}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codeblue}\bfseries,
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=4
+}
+\lstset{style=mystyle}
+
+\titleformat{\chapter}[display]
+  {\normalfont\Huge\bfseries\color{darkgray}}{\chaptertitlename\ \thechapter}{10pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{0pt}{30pt}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{3cm}
+    \Huge \textbf{Project OmniAgent} \\
+    \vspace{0.5cm}
+    \Large \textbf{Comprehensive Agent Architecture & Code Walkthrough} \\
+    \vspace{2cm}
+    \large \textit{An exhaustive, file-by-file breakdown of every major agent, orchestrator, and fast-path algorithm in the system.} \\
+    \vspace{3cm}
+    \normalsize \textbf{Antigravity AI Systems} \\
+    \today
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\chapter{Introduction}
+This report provides a step-by-step, file-by-file breakdown of the OmniAgent project. It goes beyond high-level architecture and dives into the literal code, providing the exact blueprints used to construct the orchestrators, sub-agents, memory RAG pipes, and system tools.
+
+\chapter{The Fast-Path Execution Engine (\texttt{services/fast\_path.py})}
+The Fast-Path engine intercepts conversational text to instantly trigger deterministic native Python actions without waking up the LLM. 
+
+\section{Typo Tolerance}
+Before any Regex matching occurs, the text undergoes typo correction using \texttt{pyspellchecker}. We preload common application names so they aren't destroyed by autocorrect.
+\begin{lstlisting}[language=Python]
+from spellchecker import SpellChecker
+fast_spell = SpellChecker()
+# We preload common tech terms to prevent false-positive corrections
+fast_spell.word_frequency.load_words([
+    "leetcode", "whatsapp", "vscode", "youtube", "github", "chatgpt"
+])
+
+def spellcheck_target(text):
+    words = text.split()
+    corrected = [fast_spell.correction(w) or w for w in words]
+    return " ".join(corrected)
+\end{lstlisting}
+
+\section{Regex Routing}
+The main orchestrator \texttt{process\_fast\_path\_commands} tests the user message against dozens of compiled regexes. If a match is found, it bypasses LangGraph.
+
+\subsection{Desktop Automation (PyAutoGUI \& CTypes)}
+The fast-path simulates keystrokes for actions like controlling volume, closing tabs, or locking the machine.
+\begin{lstlisting}[language=Python]
+# Locking the screen natively via CTypes
+ctypes.windll.user32.LockWorkStation()
+
+# Emptying the Recycle Bin natively via Shell32
+shell32 = ctypes.windll.shell32
+shell32.SHEmptyRecycleBinW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_uint32]
+shell32.SHEmptyRecycleBinW(None, None, 7)
+
+# Controlling Volume via PyAutoGUI
+if action == "mute":
+    pyautogui.press("volumemute")
+elif action == "max":
+    pyautogui.press("volumeup", presses=50)
+\end{lstlisting}
+
+\subsection{Rapid Code Execution}
+If the user asks to run a file, the engine uses \texttt{subprocess} to execute it natively.
+\begin{lstlisting}[language=Python]
+run_file_match = re.match(r"^run\s+(.+\.[a-z0-9]+)$", msg_lower)
+if run_file_match:
+    filename = run_file_match.group(1).strip()
+    ext = os.path.splitext(filename)[1].lower()
+    
+    cmd = None
+    if ext == '.py':
+        cmd = f'python "{filename}"'
+    elif ext == '.js':
+        cmd = f'node "{filename}"'
+        
+    if cmd:
+        subprocess.Popen(f'start cmd /k {cmd}', shell=True)
+\end{lstlisting}
+
+\chapter{Step-by-Step Agent Architecture}
+OmniAgent uses specialized agents to handle complex reasoning. Let's look at the implementation of these key components.
+
+\section{The Security Agent (\texttt{agent\_os/agents/security\_agent.py})}
+The \texttt{SecurityAgent} analyzes suspicious processes, monitors open network ports, and detects malware.
+
+\subsection{Agent Definition}
+It defines specific \texttt{system\_prompt} instructions and exposes JSON-schema tools for the LLM.
+\begin{lstlisting}[language=Python]
+class SecurityAgent(BaseAgent):
+    agent_name: str = "SecurityAgent"
+    system_prompt: str = "You are OmniAgent's Security Expert. Deeply analyze the system for potential threats, backdoors, and suspicious activities..."
+    
+    def get_tools(self) -> list:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "analyze_open_ports",
+                    "description": "Scans all listening network connections."
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "scan_temp_directory",
+                    "description": "Scans Windows temp for recent executables."
+                }
+            }
+        ]
+\end{lstlisting}
+
+\subsection{Port Analysis Implementation}
+When the LLM triggers \texttt{analyze\_open\_ports}, the following code runs using \texttt{psutil}:
+\begin{lstlisting}[language=Python]
+def _analyze_open_ports(self) -> str:
+    results = []
+    for conn in psutil.net_connections(kind='inet'):
+        if conn.status == 'LISTEN':
+            port = conn.laddr.port
+            try:
+                proc = psutil.Process(conn.pid)
+                name = proc.name()
+                exe = proc.exe()
+                results.append(f"Port: {port} | Process: {name} | Path: {exe}")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                results.append(f"Port: {port} | Unknown Process")
+    return "\n".join(results)
+\end{lstlisting}
+
+\section{The Coding Agent (\texttt{agent\_os/agents/coding.py})}
+The Coding Agent is responsible for code generation. It fundamentally integrates with the RAG indexing system to pull existing context.
+
+\subsection{RAG Injection Logic}
+The agent pulls from ChromaDB via the \texttt{session\_manager} to provide the LLM with immediate context of the user's workspace.
+\begin{lstlisting}[language=Python]
+async def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    target_task = state.get("pending_tasks", [{}])[0].get("description", "")
+    
+    # 1. Query Workspace RAG
+    context_snippets = []
+    if hasattr(session_manager, "indexer") and session_manager.indexer:
+        res = session_manager.indexer.vector_store.query_memory(
+            collection_name="project_rag",
+            query_texts=[target_task],
+            n_results=5
+        )
+        if res and res.get("documents"):
+            context_snippets = res["documents"][0]
+
+    rag_context = "\n\n---\n".join(context_snippets) if context_snippets else "No project context available."
+
+    system_prompt = f"""
+You are the expert Coding Agent. Your job is to generate code.
+[WORKSPACE CONTEXT (from RAG)]
+{rag_context}
+
+Output "END" when you are completely finished with the task to trigger a review.
+    """
+    
+    response = await self._llm_provider.generate(
+        prompt=target_task,
+        system_prompt=system_prompt,
+        tools=self._capabilities
+    )
+    
+    if response.strip() == "END":
+        return {"current_agent": self.get_name(), "next_node": "critic"}
+        
+    return {"current_agent": self.get_name(), "next_node": "executor_agent", "messages": [response]}
+\end{lstlisting}
+
+\section{The Antigravity Orchestrator (\texttt{agent\_os/agents/antigravity\_orchestrator.py})}
+This orchestrator continuously wraps LLM prompts, evaluates outputs, and verifies safety autonomously.
+
+\subsection{Autonomous Security Verification}
+Instead of relying strictly on human UI approvals, the orchestrator utilizes the LLM to verify if a shell command is benign.
+\begin{lstlisting}[language=Python]
+async def verify_shell_command(self, action_key: str, command: str) -> bool:
+    prompt = f"""
+You are an automated security verifier. Evaluate this shell command to ensure it is SAFE to run autonomously.
+Safe: mkdir, cd, npm install, pip install, git commands, compiling.
+UNSAFE: rm -rf /, formatting disks, downloading unknown binaries.
+
+Command to verify:
+```bash
+{command}
+```
+Reply with exactly "YES" or "NO".
+    """
+    response = await self.llm_provider.generate(prompt)
+    return "YES" in response.upper()
+\end{lstlisting}
+
+\subsection{Polling Background Process}
+The Orchestrator constantly polls for pending executions while letting other threads run, using Python's \texttt{asyncio}.
+\begin{lstlisting}[language=Python]
+async def _poll_and_approve(self):
+    while self.controller.is_open:
+        pending = await self.controller.get_pending_approvals()
+        for p in pending:
+            action_key, details = p.get("action_key", ""), p.get("details", {})
+            command, tool = details.get("command", ""), details.get("tool", "")
+            
+            if tool == "execute_shell_command":
+                is_safe = await self.verify_shell_command(action_key, command)
+                await self.controller.decide_approval(action_key, approved=is_safe)
+            elif tool in ["write_file", "create_directory", "delete_file"]:
+                # Auto-approve basic non-destructive file ops
+                await self.controller.decide_approval(action_key, approved=True)
+                
+        await asyncio.sleep(2)
+\end{lstlisting}
+
+\chapter{Approval Middleware (\texttt{approval\_store.py})}
+Given the extreme power of tools like \texttt{execute\_shell\_command}, a middleware intercepts them.
+
+\section{The Interceptor (\texttt{@require\_tool\_approval})}
+\begin{lstlisting}[language=Python]
+def require_tool_approval(tool_obj):
+    # Generates a unique key, e.g., "send_email:target@email.com"
+    original_run = tool_obj._run
+    
+    def wrapped_run(*args, **kwargs):
+        action_key = get_action_key(*args, **kwargs)
+        if action_key not in approved_actions:
+            pending_actions[action_key] = {"args": kwargs}
+            return f"[NEEDS_APPROVAL:{action_key}]"
+        
+        return original_run(*args, **kwargs)
+        
+    tool_obj._run = wrapped_run
+    return tool_obj
+\end{lstlisting}
+
+\chapter{Tool Ecosystem \& Implementations}
+The OmniAgent interacts with the host OS using specialized, isolated Python tool functions. These tools are defined in the \texttt{services/tools/impl} directory and are wrapped dynamically by the middleware to enforce human-in-the-loop approvals.
+
+\section{Filesystem Tools (\texttt{file\_ops.py})}
+The agent uses \texttt{file\_ops.py} for rapid, safe manipulation of files, bypassing typical shell complexities and directly integrating with the native OS API. It even opens \texttt{vscode} dynamically without relying on the command line if the agent requests.
+\begin{lstlisting}[language=Python]
+def list_directory_raw(dirpath: str = ".") -> str:
+    """List the contents of a directory."""
+    try:
+        items = os.listdir(dirpath)
+        directories = [f" {name}/" for name in sorted(items) if os.path.isdir(os.path.join(dirpath, name))]
+        files = [f" {name}" for name in sorted(items) if os.path.isfile(os.path.join(dirpath, name))]
+        
+        output = directories + files
+        return f"Contents of `{dirpath}`:\n\n" + "\n".join(output)
+    except Exception as e:
+        return f" Error listing directory: {str(e)}"
+\end{lstlisting}
+
+\section{Git Integration (\texttt{git.py})}
+The agent abstracts source control operations through \texttt{subprocess} wrapping, ensuring timeouts and exact \texttt{cwd} contexts.
+\begin{lstlisting}[language=Python]
+def _run_git(args: list, cwd: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            stdin=subprocess.DEVNULL, cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return result.stdout.strip() if result.stdout.strip() else "(no output)"
+    except Exception as e:
+        return f"Error running git: {str(e)}"
+
+def analyze_repo_raw(repo_path: str) -> str:
+    """Analyze a git repository: show its file structure, README, and recent commits."""
+    # (Extracts file tree up to 2 levels deep)
+    # ...
+    commits = _run_git(["log", "--oneline", "-10"], repo_path)
+    return f"Recent Commits:\n{commits}"
+\end{lstlisting}
+
+\chapter{Memory \& Context Engine (RAG)}
+Located in \texttt{services/agent/memory.py}, ChromaDB maintains local long-term state.
+\begin{lstlisting}[language=Python]
+import chromadb
+from langchain_chroma import Chroma
+from langchain_ollama import OllamaEmbeddings
+
+# Nomic-Embed-Text mapped to VRAM with keep_alive=-1 for 0ms latency
+embeddings = OllamaEmbeddings(model="nomic-embed-text", keep_alive=-1)
+client = chromadb.PersistentClient(path="chroma_db")
+
+global_memory = Chroma(client=client, collection_name="global", embedding_function=embeddings)
+pdf_memory = Chroma(client=client, collection_name="pdf_rag", embedding_function=embeddings)
+\end{lstlisting}
+
+\section{Email Server Integration (\texttt{email.py})}
+OmniAgent has a fully baked native email client capable of reading IMAP and sending via SMTP. It uses Python's native \texttt{smtplib} and \texttt{email.mime}.
+\begin{lstlisting}[language=Python]
+def send_email_raw(to: str, subject: str, body: str, attachments: list = None) -> str:
+    """Actually sends the email via SMTP."""
+    load_dotenv()
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_password = os.getenv("SENDER_PASSWORD")
+    
+    msg = _create_message(to, subject, body, attachments)
+
+    server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+    server.starttls()
+    server.login(sender_email, sender_password)
+    server.send_message(msg)
+    server.quit()
+    
+    return f"Successfully connected to `{smtp_server}` and delivered email to `{to}`."
+\end{lstlisting}
+
+\chapter{Infrastructure \& Containerization}
+The environment is designed to be highly reproducible and isolated.
+
+\section{Docker Orchestration}
+The \texttt{docker-compose.yml} natively orchestrates PostgreSQL and Redis instances for database and caching respectively.
+\begin{lstlisting}[language=yaml]
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: omniagent_postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: omniagent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  redis:
+    image: redis:alpine
+    container_name: omniagent_redis
+    ports:
+      - "6379:6379"
+\end{lstlisting}
+
+\section{Redis Key-Value Caching}
+Redis operates alongside the Fast-Path engine to buffer LLM results. When the LLM generates a long chunk of code, it stores it in \texttt{redis} under \texttt{llm\_result:session\_id}. Then, when the user triggers the fast-path command "show me it", the orchestrator instantly fetches the buffer from Redis and simulates keystrokes to paste it natively into VS Code.
+
+\section{Alembic Migrations}
+Because the \texttt{api/models.py} defines SQLAlchemy tables (like \texttt{Session} and \texttt{Message}), Alembic is utilized to trace state diffs and emit SQL schemas directly to the \texttt{omniagent\_postgres} Docker container.
+
+\chapter{Automation Workflows}
+OmniAgent groups atomic tools into higher-level, multi-step automation workflows. These are defined in \texttt{workflows/automation\_workflows.py} and can execute chained operations autonomously.
+
+\section{Desktop Coding Workflow}
+\textbf{Function:} \texttt{create\_python\_project(project\_name, code)}\\
+This workflow instantly orchestrates a development environment. It creates a project folder on the Desktop, writes the provided code to \texttt{main.py}, opens the file dynamically in VS Code, and then utilizes the \texttt{execute\_shell\_command} to run the code in the background, returning both the file creation status and execution stdout to the LLM.
+
+\section{Notepad Modification Workflow}
+\textbf{Function:} \texttt{modify\_file\_and\_rerun(filepath, append\_code)}\\
+Designed for quick patching, this workflow reads an existing file, appends new code to the bottom, saves it, opens it natively in Notepad for user visibility, and then executes it.
+
+\section{Browser Research Workflow}
+\textbf{Function:} \texttt{browser\_research\_and\_save(query, filepath)}\\
+When deep research is requested, this workflow triggers DuckDuckGo scraping, extracts the raw HTML text, uses the LLM to summarize the findings, and writes the resulting summary directly into a Markdown file at the specified \texttt{filepath}.
+
+\section{Git Automation Workflow}
+\textbf{Function:} \texttt{git\_commit\_and\_push(repo\_path, message)}\\
+A chained operation that first runs \texttt{git status}, stages all changes via \texttt{git add *}, commits them using the LLM-generated message, and finally pushes to the remote branch. 
+
+\section{Research and Email Workflow}
+\textbf{Function:} \texttt{research\_and\_email(topic, recipient)}\\
+A dual-agent workflow that first scrapes the web for a specific topic, generates a comprehensive summary, and then pipes that summary directly into the native email client to save an outbound draft addressed to the \texttt{recipient}.
+
+\section{Resume Analysis Workflow}
+\textbf{Function:} \texttt{analyze\_resume\_skills(resume\_path)}\\
+This workflow parses local PDF or Text resumes. It runs a Regex evaluation to extract the candidate's email, target job roles, and specific tech stack keywords (e.g., Python, Docker, Kubernetes) to generate a fast profile summary.
+
+\chapter{Library \& Import Reference}
+This section details every major library, sub-library, and built-in Python module imported and utilized across the OmniAgent architecture, accompanied by a single-line explanation of its purpose within the system.
+
+\section{Third-Party Dependencies}
+\begin{description}[leftmargin=!, labelwidth=4.5cm]
+    \item[\texttt{fastapi}] High-performance asynchronous API framework used to build the core routing.
+    \item[\texttt{uvicorn}] ASGI web server implementation used to run the FastAPI application.
+    \item[\texttt{sqlalchemy}] Object Relational Mapper (ORM) defining the \texttt{Session} and \texttt{Message} tables.
+    \item[\texttt{alembic}] Database migration engine used to update SQLAlchemy schema changes over time.
+    \item[\texttt{psutil}] Cross-platform process monitoring tool, used by the \texttt{SecurityAgent} to detect backdoors.
+    \item[\texttt{pyspellchecker}] Typo-tolerance engine to correct misspelled fast-path commands before evaluation.
+    \item[\texttt{pyautogui}] Native OS automation library used to simulate keystrokes, mouse clicks, and volume control.
+    \item[\texttt{langchain\_core}] Base abstractions for LLM message definitions and structured tool schemas.
+    \item[\texttt{langchain\_ollama}] Specific LangChain integration used to communicate natively with local Ollama models.
+    \item[\texttt{langgraph}] State machine graph framework utilized to route LLM reasoning between multiple sub-agents.
+    \item[\texttt{chromadb}] Local vector database utilized for storing semantic embeddings for the RAG memory.
+    \item[\texttt{langchain\_chroma}] LangChain wrapper to interface seamlessly with the persistent ChromaDB client.
+    \item[\texttt{redis}] In-memory key-value data store used to queue and buffer LLM-generated code outputs.
+    \item[\texttt{pypdf}] PDF parsing library used to extract text chunks from documents to ingest into ChromaDB.
+    \item[\texttt{pyperclip}] Cross-platform clipboard library used to paste generated code directly into the user's IDE.
+\end{description}
+
+\section{Python Standard Library (Built-ins)}
+\begin{description}[leftmargin=!, labelwidth=4.5cm]
+    \item[\texttt{os}] Native OS interface utilized heavily for path generation, directory traversing, and environment variables.
+    \item[\texttt{sys}] System-specific parameters utilized for process exiting and argument reading.
+    \item[\texttt{subprocess}] Used to spawn isolated terminal shells (e.g., running \texttt{git}, \texttt{npm}, \texttt{python}).
+    \item[\texttt{ctypes}] Foreign function interface used to hook directly into the \texttt{windll.user32} Win32 API.
+    \item[\texttt{asyncio}] Asynchronous I/O framework used to run background polling orchestrators non-blockingly.
+    \item[\texttt{json}] Utilized to serialize and deserialize LangGraph state dictionaries and tool arguments.
+    \item[\texttt{re}] Regular expression engine powering the entire fast-path routing interception logic.
+    \item[\texttt{time}] Time access library used to manage sleep intervals during background tool polling.
+    \item[\texttt{logging}] Facility for emitting standard out server logs and capturing exception traces.
+    \item[\texttt{difflib}] Used to execute fuzzy string matching when a user slightly misspells a command trigger.
+    \item[\texttt{tempfile}] Resolves the Windows Temp directory so the \texttt{SecurityAgent} can scan for malware droppers.
+    \item[\texttt{uuid}] Generates cryptographically unique identifiers for LLM tool calls and chat sessions.
+    \item[\texttt{shutil}] High-level file operations used by the filesystem tools to move and copy entire directories.
+    \item[\texttt{fnmatch}] Unix filename pattern matching used by the search tools to find specific file extensions.
+    \item[\texttt{smtplib}] Native SMTP client used by the email agent to send automated outbound emails.
+    \item[\texttt{imaplib}] Native IMAP client used to search inboxes and push unsent messages to the Drafts folder.
+    \item[\texttt{email.mime}] Package utilized to construct multi-part email headers and encode file attachments.
+    \item[\texttt{webbrowser}] Interface used by the fast-path to immediately dispatch DuckDuckGo and YouTube searches.
+\end{description}
+
+\chapter{Conclusion}
+By chaining Fast-Path regex evaluation for instant tasks, RAG injections in the Coding Agent, Autonomous Security Verification in the Orchestrator, and strict security interceptors, OmniAgent achieves an unparalleled level of local autonomy. Any developer wishing to recreate this project simply needs to mirror the exact dataflows outlined in this manual.
+\end{document}

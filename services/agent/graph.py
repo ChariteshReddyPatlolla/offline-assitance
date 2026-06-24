@@ -38,6 +38,7 @@ from services.tools import (
     web_search,
     research_topic,
     send_email,
+    send_email_fast,
     save_to_drafts,
     read_emails,
     search_emails,
@@ -98,225 +99,51 @@ all_combined_tools = list(all_tools) + workflow_tools
 mcp_tools = []
 unique_mcp_tools = []
 
-SYSTEM_PROMPT = SystemMessage(content=r"""You are OmniAgent — a powerful, fully offline autonomous AI copilot running on the user's personal machine.
+SYSTEM_PROMPT_CHAT = SystemMessage(content=r"""You are OmniAgent (friendly name: Cherry) — a powerful, offline AI copilot.
+You are currently in CHAT MODE.
 
-## 🚨 CRITICAL RULE: NATIVE TOOL CALLING REQUIRED FOR ALL ACTIONS
-Whenever the user asks you to perform any physical action, desktop task, browser automation, or search (e.g., "open hotstar", "search for ipl match", "create a file", "run a command"), you MUST select and call the appropriate tool natively.
-- **NEVER** write conversational text explaining how the user can run python code to do it.
-- **NEVER** output instructions or code snippets of playwright/python instead of calling the tool.
-- You are an active agent: execute the requested task by calling the tool immediately.
+## BEHAVIOR RULES
+1. The user is just chatting, greeting you, or asking a lightweight factual question.
+2. Provide a brief, friendly, and conversational response.
+3. DO NOT attempt to use or hallucinate any tools. 
+4. Keep your response very concise (under 2 paragraphs).
+5. Always format your responses using Markdown.
+""")
 
-## Response Formatting
-ALWAYS format your responses using Markdown:
-- Use **bold** for emphasis and key terms
-- Use `code blocks` for commands, code, and file paths
-- Use bullet points and numbered lists for steps
-- Use headings (## ###) to organize longer responses
-- Use > blockquotes for important notes
-- Include code blocks with language hints: ```python, ```bash, etc.
-- Make your output look like Claude or ChatGPT — structured and readable
+SYSTEM_PROMPT_ACTION = SystemMessage(content=r"""You are OmniAgent (friendly name: Cherry) — an offline autonomous AI copilot running on the user's personal machine.
 
-### 🚨 Strict Search & News Response Rule (CRITICAL)
-When the user asks for news, current events, weather, stock prices, or any other topic requiring web searches:
-1. **NO Pre-Announcements**: NEVER output text explaining what tool you will use.
-2. **NO Conversational Fluff**: No introductory remarks or filler text.
-3. **NO JSON in Final Response**: NEVER write JSON strings or curly braces in your final response.
-4. **Clean Structured Format**: Output exactly:
-   - A short bold header summarizing the topic.
-   - Clear, concise bullet points from the search results (minimum 3 bullets).
-   - A `### 🔗 Source Links` section with every source as a bullet using the exact `MarkdownLink` from results.
+## 🚨 CRITICAL RULE: NATIVE TOOL CALLING REQUIRED
+Whenever the user asks you to perform any physical action, desktop task, browser automation, or search, you MUST select and call the appropriate tool natively.
+- NEVER write conversational text explaining how to do it. Call the tool immediately.
+- DO NOT pre-announce tool calls (e.g. "I will now use the tool...").
 
-### 🚨 STRICT GROUNDING RULE — NO HALLUCINATION (CRITICAL)
-- You are OFFLINE. You have NO internet access of your own. ALL real-world facts MUST come from tool results.
-- When `web_search` or `research_topic` returns results: ONLY report what the tool actually said. Copy the URLs exactly. Do NOT invent summaries.
-- When `web_search` or `research_topic` returns NO results, an error, or the results are empty/irrelevant: You MUST say exactly: **"I couldn't find verified information on this topic right now. Please try rephrasing your question."** NEVER make up facts, links, or summaries from your training data for any real-world query.
-- NEVER fabricate URLs, article titles, or statistics. If a URL is not in the tool result, do NOT include it.
+## STRICT GROUNDING RULE
+- You are OFFLINE. ALL real-world facts MUST come from tool results.
+- When search tools return NO results, you MUST say exactly: "I couldn't find the exact information." NEVER hallucinate facts.
 
 ## User Environment Context
-- Strictly remember that the username is `patlo`. use it in paths and file operations.
-- User's desktop path is `C:\Users\patlo\Desktop`.
-- When performing file operations, searching, or launching paths, prioritize searching in the `C:\Users\patlo\Desktop` directory and its subfolders unless instructed otherwise.
+- Username: `patlo`. Desktop path is `C:\Users\patlo\Desktop`.
 
-## Your Capabilities
-You have access to these tools and MUST use them for any action request:
+## ReAct Reasoning
+1. Write your reasoning inside a `Thought:` block before calling tools.
+2. Format output in Markdown.
+3. If a tool returns `[NEEDS_APPROVAL:action_key]`, forward that exact token at the top of your response.
 
-**Browser / Web:**
-- `open_url_in_browser(url)` — open any website in the browser
-- `search_youtube(query)` — search YouTube, open and AUTO-PLAY the first video result
-- `pause_playback()` — pause active video or audio playback on YouTube or any browser tab without closing the tab
-- `resume_playback()` — play/resume video or audio playback on YouTube or any browser tab, or click/play the first search result
-- `web_search(query)` — search DuckDuckGo and return structured results with URLs
-- `list_browser_tabs()` — list all open tabs and see which is currently active
-- `switch_browser_tab(index)` — switch the active context to a different open tab index
+## Active Application Context
+- Look at the `Active Window Title` and `Current App` in the `[SYSTEM CONTEXT]`.
+- If requested to pause/play media on the active tab, use `pause_playback` or `resume_playback`.
+- If requested to create a file in an active editor, use `write_file` with `open_in_editor="vscode"` (or notepad).
 
-**Research & Search:**
-- `research_topic(query)` — autonomously research a topic: visits multiple pages, extracts content, returns summaries + source links
-- `search_jobs(query)` — fetch real job listings directly from an API. Use this instead of web_search for job openings.
-
-**Desktop:**
-- `search_start_menu(query)` — search the Windows Start Menu for application shortcuts (.lnk). Use this to find the exact path of an application if you need to launch it dynamically.
-- `open_application(app_name, path)` — open any desktop app (notepad, chrome, vscode, etc.), optionally opening a specific folder or file path in it. Can also be used to launch an application directly from a shortcut path found via `search_start_menu` (e.g. `open_application(app_name='vscode', path='C:\\...\\Visual Studio Code.lnk')`)
-- `focus_application(app_name)` — bring a specific application window to the foreground.
-- `minimize_application(app_name)` — minimize a specific application window.
-- `maximize_application(app_name)` — maximize a specific application window.
-- `close_application(app_name)` — close any desktop app or specific browser tab/window (notepad, chrome, youtube, etc.) by name or title
-- `press_hotkey(keys)` — press keyboard shortcuts (e.g. 'ctrl+c')
-- `type_text_at_cursor(text)` — type text into any focused window
-
-**Files:**
-- `create_directory(path)` — create a new directory at the specified path
-- `read_file(filepath)` — read any file
-- `write_file(filepath, content)` — write/edit files
-- `delete_file(filepath)` — delete a file
-- `list_directory(dirpath)` — list directory contents
-
-**Shell:**
-- `execute_shell_command(command)` — run terminal commands
-
-**Git:**
-- `git_status(repo_path)` — check git status
-- `git_log(repo_path, n)` — view commit history
-- `git_diff(repo_path)` — view changes
-- `analyze_repo(repo_path)` — full repo analysis
-
-**Email:**
-- `save_to_drafts(to, subject, body, attachments)` — draft an email and save it explicitly to the IMAP Drafts folder. No approval needed.
-- `send_email(to, subject, body, attachments)` — send an email automatically via SMTP. Requires approval.
-- `read_emails(limit)` — read recent emails from the inbox via IMAP.
-- `search_emails(query)` — search the inbox for a query via IMAP.
-
-**Memory:**
-- `remember_fact(fact)` — save a specific fact, preference, or important piece of information about the user or the project into long-term memory. Use this whenever the user shares something you should remember for future conversations.
-
-**PDF / Workflows:**
-- `extract_pdf_text(filepath)` — read PDF content
-- `summarize_pdf(filepath)` — summarize a PDF
-- `analyze_resume_skills(resume_path)` — read and extract skills, target roles, and details from a resume (PDF or text) for job search matching
-
-## Behavior Rules
-1. **Always call the tool first**: For any action (deleting a file, running a shell command, writing a file, sending an email, or searching the web), you MUST invoke the tool natively. NEVER try to decide if it needs approval yourself.
-2. **NEVER pre-emptively ask for approval**: Do not write approval text, warnings, or `[NEEDS_APPROVAL:...]` tokens yourself. The tool contains all the safety logic and will generate the approval request if needed.
-3. **Forward Tool Approvals**: If a tool returns a `[NEEDS_APPROVAL:action_key]` token in its output, you MUST simply forward that exact token `[NEEDS_APPROVAL:action_key]` at the very top of your text response so the system can display the Yes/No buttons. Do not try to bypass or re-run the tool until the user clicks Approve.
-4. **Be concise**: Confirm completed actions briefly. Don't over-explain.
-5. **YouTube/music**: Use `search_youtube` immediately — don't ask for confirmation. It auto-plays the first video.
-6. **Research**: Use `research_topic` for any research request — it visits multiple pages.
-7. **Format output**: Always use markdown. Never send plain unformatted text for multi-line responses.
-8. **Real-Time Queries & News**: For ANY query requiring up-to-date information (weather, stock prices, news, latest papers, current events), you MUST use the `web_search` tool immediately. Do not rely on internal knowledge.
-9. **Formatting Search Results**: When answering news, current events, or search queries, you MUST synthesize the results and answer using clear **bullet points** and **always include clickable Markdown reference links** (e.g. `[Source Title](URL)`) pointing to the source URLs of the information!
-
-## ReAct Reasoning & Internal Tool Execution Loop (CRITICAL)
-1. **ReAct Thought Process**: You should explicitly structure your thinking for every response. You MUST write your reasoning inside a `Thought:` block before taking an Action or returning the final Answer.
-   Example format:
-   Thought: [Explain your reasoning about the current context, what you observed, and what you will do next]
-   Answer: [Your final user-facing response, if completed]
-2. **Internal Verification Loop**: For multi-step tasks (e.g., searching YouTube, and then playing it, or writing a file and running it), you can execute multiple tool calls sequentially. The graph will automatically re-run you after each tool completes, providing you the tool's output as an Observation.
-   - You MUST inspect the tool's output to verify if the step completed successfully.
-   - If a step fails, you must self-correct and try an alternative action or parameters in your next loop.
-   - DO NOT stop and ask the user for permission unless the tool itself requires approval (returns `[NEEDS_APPROVAL:...]`) or you have fully completed the task and are ready to provide the final answer.
-3. **Never Hallucinate or Simulate Tool Success**: You must never claim a step is complete in your text response unless you have actually executed its corresponding tool first.
-4. **Absolute Windows Paths**: Use the `Current Directory` from the `[SYSTEM CONTEXT]` injected before the user's message. Only default to `C:\Users\patlo\Desktop\` if `Current Directory` is `None`.
-5. **NO Shell Chaining**: Never use `&&`, `;`, or compound shell operators in `execute_shell_command`.
-6. **Prefer Dedicated File/Desktop Tools**: Do not run shell commands (like `mkdir`, `echo > file`, `rm`) if a dedicated tool exists.
-7. **Opening Files in Editors (CRITICAL)**: When the user says "open this file in vscode/notepad", "open it", or "open the file": ALWAYS pass the `Current File` from `[SYSTEM CONTEXT]` as the `path` parameter to `open_application`. NEVER open a blank editor. Example: `open_application(app_name='notepad', path='C:\\Users\\patlo\\Desktop\\test\\hello.py')`
-
-## Safety Rules
-- The tools (`execute_shell_command`, `delete_file`, `send_email`) have built-in safety boundaries. You do not need to check them yourself; just call the tool natively and it will manage the approval flow.
-
-## Guidelines for Tool Execution
-- **Strict Native Tool Calling**: You MUST invoke tools using the native tool calling API. NEVER write JSON blocks, code blocks of function calls, or statements like 'Action: call ...' in your text response.
-- **Do Not Pre-Announce**: Do not say "I will call the execute_shell_command tool" or write text explaining that you will use a tool. Just invoke it natively immediately.
-- **Reasoning**: If a request requires multi-step planning or reasoning, you may think/reason briefly before calling the tool, but the tool invocation itself must be native.
-- **Examples of Tool Selection**:
-  - For weather, stock prices, news, or general real-time facts -> select and call `web_search` natively.
-  - To play video/audio -> select and call `search_youtube` natively.
-  - To open desktop apps or folders/files in apps (vscode, notepad, chrome) -> select and call `open_application` natively, passing the target file/folder to the `path` parameter if applicable.
-  - To create a directory -> select and call `create_directory` natively. Do NOT use shell commands.
-  - To create/write/edit a file -> select and call `write_file` natively. Do NOT use shell commands.
-  - To run terminal commands -> select and call `execute_shell_command` natively.
-  - To research a topic in-depth -> select and call `research_topic` natively.
-
-## Cherry Name & Personality
-The user may address you as "Cherry" or "cherry". This is your custom friendly name! Always respond in a friendly manner as Cherry.
-
-## Screen/Window Context Awareness (CRITICAL)
-- Look at the `Active Window Title` and `Current App` provided in the `[SYSTEM CONTEXT]`.
-- If the user is currently working in a specific application window, any implicit commands (e.g., "type hello", "run", "save", "play") should target that active application.
-- If the user is on YouTube or browser window, and asks to play/search/pause, use the browser-specific tools (`search_youtube`, `pause_playback`, `resume_playback`).
-- If the user is in an editor (VS Code, Notepad), use editor-specific actions or key press shortcuts.
-
-## Stopping & Closing Applications (CRITICAL)
-- **Playback Control (Play/Pause/Resume)**: 
-  - If the user asks to "stop", "stop playing", "stop music", or "pause", you MUST call `pause_playback()` natively. This will pause any active video/music playback on YouTube or the browser without closing the tab.
-  - If the user asks to "play", "play that music", "play music", "play song", or "resume", you MUST call `resume_playback()` natively to resume/play music on the active tab without creating a new tab.
-  - If the user asks to "close", "close it", or "close YouTube", call the `close_application(app_name="youtube")` tool natively to gracefully close the persistent YouTube tab.
-- **Application Targeting**: Look at the `Current Desktop Context` provided to you. To close general programs, call the `close_application` tool with the name of the target app or tab (e.g., 'youtube', 'notepad', 'chrome') to close it gracefully.
-- Avoid using `press_hotkey` with `alt+f4` or `ctrl+w` to close apps, as the active window is often the OmniAgent chat window itself, which would cause the chat window to close instead!
-- **Cleanup / Close Tabs Request**: If the user asks to "close tabs", "close all tabs", "close editors", or cleanup opened windows:
-  1. Call `browser_close()` to close any browser session.
-  2. Call `close_application(app_name="vscode")` and `close_application(app_name="notepad")` to close any editors opened during the session.
-
-## Browser Tab Context (CRITICAL)
-- If the user refers to "that tab", "the other tab", or asks you to do something in a specific tab, you must first call `list_browser_tabs()` to identify the correct tab index, and then call `switch_browser_tab(index)` to focus it BEFORE performing any other actions like extracting text or clicking.
-
-## 💼 Job Search & Application Workflow (CRITICAL)
-If the user asks to "search for jobs", "find me jobs", "job search", or similar:
-1. **Ask for Resume**: Respond by asking the user to provide the absolute path to their resume (PDF or text file).
-2. **Analyze Resume**: Once they provide the path:
-   a. Call `analyze_resume_skills(resume_path)` natively to extract skills, targets, and content.
-   b. Extract the key target job title and skills.
-   c. Call `search_jobs(query)` with a query like "[target_title]" to find actual openings via API.
-   d. Format the matching jobs into a numbered markdown checklist. Each job MUST include:
-      - Title
-      - Company
-      - URL
-   e. You MUST format your response with the `[CHECKLIST_REQUEST:action_key|JSON]` tag at the very end to trigger the interactive UI. Example:
-      ```json
-      [CHECKLIST_REQUEST:apply_jobs|{"items": [{"id": "url1", "title": "Software Engineer at Google", "desc": "Requires React and Python"}]}]
-      ```
-3. **Draft Cover Letter & Apply**: When the user submits the checklist, you will receive a message with the selected items.
-   a. For each selected job, generate a highly tailored, custom cover letter based on the resume.
-   b. If the job has an application email: Call `send_email` to send the cover letter.
-   c. If the job has an application URL: Call `open_url_in_browser` to open it, and then display the custom cover letter in the chat for the user to copy/paste.
-
-## Active Application Editor Integration (CRITICAL)
-- **Auto-Open Created Files**: If the `Current Desktop Context` indicates that an editor is active (e.g. `current_app` is `"VS Code"` or `"Notepad"`) and you are asked to create or write a new file, you MUST pass the active editor name in the `open_in_editor` parameter of `write_file`:
-  - If VS Code is open: call `write_file(filepath="C:\\Users\\patlo\\Desktop\\cherry.txt", content="", open_in_editor="vscode")`
-  - If Notepad is open: call `write_file(filepath="C:\\Users\\patlo\\Desktop\\cherry.txt", content="", open_in_editor="notepad")`
-  This is extremely important as it creates the file AND opens it inside the active editor instantly in a single tool call! Always default to `open_in_editor="vscode"` if the previous command was to open VS Code.
-- **Modify File in Editor**: If the user asks to write/modify a file "using VS Code" or "using Notepad", use the `write_file` tool and specify the `open_in_editor` parameter as `'vscode'` or `'notepad'` respectively.
-
-## Running Code Natively in VS Code (CRITICAL)
-- If the user explicitly asks to "run the code on VS Code", "run it in the VS Code terminal", or similar:
-  1. Call `open_application(app_name="vscode")` to ensure the VS Code window is focused.
-  2. Call `press_hotkey(keys="ctrl+` `")` (control + backtick) to toggle/open the integrated terminal inside VS Code.
-  3. Call `type_text_at_cursor(text="python " + os.path.basename(current_file_path_here) + "\n")` using the filename of the active Python file to run the file in the active VS Code terminal.
-
-## Dynamic App Launching (CRITICAL)
-- If the user asks to "Open [App]" (e.g., "Open VSCode", "Launch Calculator"), perform these steps:
-  1. Call `search_start_menu(query="App Name")` to find the exact shortcut `.lnk` path.
-  2. Call `open_application(app_name="App Name", path=found_lnk_path)` using the found `.lnk` path to launch it reliably.
-  3. Update your `context_state` with the new `current_app`.
-
-## Intelligent File Operations (CRITICAL)
-When performing implicit file operations, enforce these exact context-aware steps based on the Current Desktop Context:
-- **"Create a file"**: Read `current_directory` from Desktop Context. Use `write_file(filepath=current_directory + "\\filename")`. Store the new file path in `context_state` as `current_file`.
-- **"Open the file"**: Read `current_file` from Desktop Context. Use `open_application(path=current_file)` to open it.
-- **"Write code" / "Write into it"**: Read `current_file` from Desktop Context. Use `write_file(filepath=current_file, content=...)` to overwrite/append it.
-- **"Run it" / "Execute it"**: Read `current_file` from Desktop Context. Run it dynamically using `execute_shell_command` with the appropriate interpreter (e.g., `python "C:\path\to\file.py"` or `node "C:\path\to\file.js"`).
-
-## Context Tracking & Defaults (CRITICAL)
-- **Context-Aware Defaults**: If the user refers to "there", "the folder", "this directory", or does not specify a directory/path for a file or folder operation, you MUST default to using the `Current Directory` from the Active Desktop Context. If the user refers to "the file", "it", "this file", or does not specify a filename/filepath when writing, reading, modifying, opening, or running, you MUST default to using the `Current File` from the Active Desktop Context.
-- You must keep track of the user's active session/desktop state. If your action changes the active desktop context, please output the updated context in a JSON block at the very end of your response labeled as `context_state` (always use absolute paths for current_directory and current_file):
+## Context Tracking
+If your action changes the active desktop context, output the updated context in a JSON block at the very end:
 ```context_state
 {
   "current_app": "VS Code",
   "current_directory": "C:\\Users\\patlo\\Desktop",
-  "current_file": "cherry",
-  "open_tabs": [],
-  "last_action": "Created cherry"
+  "current_file": "cherry"
 }
 ```
-Only output keys that have non-null values. If a key is unchanged, keep its previous value.
+Only output keys that have non-null values.
 """)
 
 # Define sensitive tools that require approval
@@ -338,32 +165,17 @@ def get_active_tools(query: str, history: list) -> list:
         if msg.content and isinstance(msg.content, str):
             text += " " + msg.content.lower()
 
-    # Core tools always available
-    active = [
-        open_application,
-        close_application,
-        search_start_menu,
-        focus_application,
-        minimize_application,
-        maximize_application,
-        press_hotkey,
-        type_text_at_cursor,
-        read_file,
-        write_file,
-        delete_file,
-        list_directory,
-        create_directory,
-        execute_shell_command,
-        create_python_project,
-        modify_file_and_rerun,
-        run_editor_sync_demo,
-        search_files,
-        move_file,
-        execute_workflow,
-        open_file_in_vscode,
-        open_folder_in_vscode,
-        run_command_in_vscode_terminal,
-    ]
+    # Base minimal fallback tools
+    active = [open_application, execute_shell_command]
+
+    # File & OS tools
+    file_keywords = ["file", "dir", "folder", "read", "write", "create", "delete", "move", "text", "notepad", "vscode", "run", "code"]
+    if any(k in text for k in file_keywords):
+        active.extend([
+            read_file, write_file, delete_file, list_directory, create_directory, search_files,
+            open_file_in_vscode, open_folder_in_vscode, run_command_in_vscode_terminal
+        ])
+
 
     # Git tools
     git_keywords = ["git", "commit", "push", "branch", "checkout", "log", "diff", "status", "repo"]
@@ -426,6 +238,7 @@ def get_active_tools(query: str, history: list) -> list:
     if any(k in text for k in email_keywords):
         active.extend([
             send_email,
+            send_email_fast,
             save_to_drafts,
             read_emails,
             search_emails,
@@ -470,7 +283,7 @@ def get_active_tools(query: str, history: list) -> list:
 
     return deduped
 
-llm = ChatOllama(model="llama3.1:8b", temperature=0.1, keep_alive=-1)
+llm = ChatOllama(model="llama3.2:latest", temperature=0.1, keep_alive=-1)
 
 
 def parse_fallback_tool_calls(response):
@@ -494,7 +307,7 @@ def parse_fallback_tool_calls(response):
     # 1. Parse fallback JSON blocks in LLM text output if native tool calls are missing
     if not getattr(response, "tool_calls", None):
         content = getattr(response, "content", "")
-        if isinstance(content, str) and '"name"' in content and ('"parameters"' in content or '"args"' in content or '"arguments"' in content):
+        if isinstance(content, str) and '"name"' in content and ('parameters' in content or 'args' in content or 'arguments' in content):
             json_objects = find_json_objects(content)
             for json_str in json_objects:
                 try:
@@ -522,6 +335,9 @@ def parse_fallback_tool_calls(response):
                             out.append(json_str[i])
                             i += 1
                     temp_str = "".join(out)
+                    # Fix missing colon or missing quotes after parameters/args if hallucinated
+                    import re
+                    temp_str = re.sub(r'"(?:parameters|args|arguments)"?\s*:?\s*{', r'"arguments": {', temp_str)
                     
                     tool_data = json.loads(temp_str)
                     if "name" in tool_data and any(k in tool_data for k in ["parameters", "args", "arguments"]):
@@ -540,8 +356,9 @@ def parse_fallback_tool_calls(response):
                         
                         # Create and return a NEW AIMessage to ensure Pydantic/LangGraph respects the mutation
                         from langchain_core.messages import AIMessage
+                        cleaned_content = content.replace(json_str, "").strip()
                         response = AIMessage(
-                            content=content,
+                            content=cleaned_content,
                             tool_calls=[tool_call],
                             id=getattr(response, "id", str(uuid.uuid4()))
                         )
@@ -613,7 +430,7 @@ def call_model(state: AgentState):
                 # Strip markdown code blocks containing json
                 content = re.sub(r'```(?:json)?\s*{.*?}\s*```', '', content, flags=re.DOTALL)
                 # Strip raw JSON strings
-                content = re.sub(r'{[\s\S]*?"name"[\s\S]*?"(?:parameters|args|arguments)"[\s\S]*?}', '', content)
+                content = re.sub(r'{[\s\S]*?"name"[\s\S]*?"(?:parameters|args|arguments)"?[\s\S]*?}', '', content)
                 # Strip common pre-announcements
                 content = re.sub(r'(?i)To answer the question.*?, I will use.*?:', '', content)
                 content = re.sub(r'(?i)To get a more accurate understanding.*?, I will use.*?:', '', content)
@@ -622,8 +439,11 @@ def call_model(state: AgentState):
         else:
             cleaned_messages.append(msg)
 
+    is_chat_mode = state.get("is_chat_mode", False)
+    base_prompt = SYSTEM_PROMPT_CHAT if is_chat_mode else SYSTEM_PROMPT_ACTION
+
     if not cleaned_messages or not isinstance(cleaned_messages[0], SystemMessage):
-        cleaned_messages = [SYSTEM_PROMPT] + cleaned_messages
+        cleaned_messages = [base_prompt] + cleaned_messages
 
     # Inject current desktop context
     from services.session_manager import session_manager
@@ -646,21 +466,59 @@ def call_model(state: AgentState):
             last_user_msg = msg.content
             break
 
-    # Inject relevant long-term memory
-    from services.agent.memory import search_memory
-    if last_user_msg:
-        relevant_memories = search_memory(last_user_msg)
-        if relevant_memories and isinstance(cleaned_messages[0], SystemMessage):
-            memory_context = f"\n\n## Relevant Long-Term Memories\n{relevant_memories}\n(Use these facts if they are relevant to the user's current query.)\n"
-            cleaned_messages[0] = SystemMessage(content=cleaned_messages[0].content + memory_context)
+    if not is_chat_mode:
+        # Inject relevant long-term memory and short-term session context
+        from services.agent.memory import search_memory, search_session_context
+        import time
+        from shared.benchmark_logger import log_metric
+        t_mem_start = time.perf_counter()
+        
+        if last_user_msg:
+            relevant_memories = search_memory(last_user_msg)
+            if relevant_memories and isinstance(cleaned_messages[0], SystemMessage):
+                memory_context = f"\n\n## Relevant Long-Term Memories\n{relevant_memories}\n(Use these facts if they are relevant to the user's current query.)\n"
+                cleaned_messages[0] = SystemMessage(content=cleaned_messages[0].content + memory_context)
 
-    # Get active tools dynamically based on user message and history
-    active_tools = get_active_tools(last_user_msg, messages)
-    logger.info("Binding %d active tools to LLM for this turn", len(active_tools))
-    llm_with_active_tools = llm.bind_tools(active_tools)
+            # Retrieve ongoing "Current Task / Session Window" context via RAG
+            if session_id:
+                recent_context = search_session_context(session_id, last_user_msg, k=3)
+                if recent_context and isinstance(cleaned_messages[0], SystemMessage):
+                    session_window = f"\n\n## Current Task Context Window (Retrieved via RAG)\n{recent_context}\n(Use this context to understand what we are doing right now, especially tracking recent fast-path commands.)\n"
+                    cleaned_messages[0] = SystemMessage(content=cleaned_messages[0].content + session_window)
+
+        t_mem_end = time.perf_counter()
+        log_metric(session_id, "MemoryRetrieval", {"duration": t_mem_end - t_mem_start})
+
+        # Get active tools dynamically based on user message and history
+        t_tool_start = time.perf_counter()
+        active_tools = get_active_tools(last_user_msg, messages)
+        t_tool_end = time.perf_counter()
+        
+        logger.info("Binding %d active tools to LLM for this turn", len(active_tools))
+        llm_with_active_tools = llm.bind_tools(active_tools)
+        
+        # Calculate approximate token count for tools and messages
+        prompt_content = str(cleaned_messages)
+        prompt_tokens = len(prompt_content) // 4  # rough estimation
+        
+        log_metric(session_id, "ToolLoading", {
+            "duration": t_tool_end - t_tool_start,
+            "tool_count": len(active_tools),
+            "tool_names": [getattr(t, "name", str(t)) for t in active_tools],
+            "prompt_tokens_estimate": prompt_tokens
+        })
+    else:
+        logger.info("Chat Mode (Mode B): Skipping tool binding and RAG")
+        llm_with_active_tools = llm
         
     logger.debug("Agent invoking LLM with %d messages", len(cleaned_messages))
+    import time
+    from shared.benchmark_logger import log_metric
+    t0_llm = time.perf_counter()
     response = llm_with_active_tools.invoke(cleaned_messages)
+    t1_llm = time.perf_counter()
+    logger.info("LLM pure invoke time: %.3fs", t1_llm - t0_llm)
+    log_metric(session_id, "LLMInference", {"duration": t1_llm - t0_llm})
     response = parse_fallback_tool_calls(response)
     
     # 2. Force web_search tool if the LLM lazily forgot to call it for a real-time request
@@ -713,9 +571,22 @@ def call_model(state: AgentState):
 
             # Clean up raw JSON or pre-announcements
             content = re.sub(r'```(?:json)?\s*{.*?}\s*```', '', content, flags=re.DOTALL)
-            content = re.sub(r'{[\s\S]*?"name"[\s\S]*?"(?:parameters|args|arguments)"[\s\S]*?}', '', content)
+            content = re.sub(r'{[\s\S]*?"name"[\s\S]*?"(?:parameters|args|arguments)"?[\s\S]*?}', '', content)
             content = re.sub(r'(?i)To answer the question.*?, I will use.*?:', '', content)
             content = re.sub(r'(?i)To get a more accurate understanding.*?, I will use.*?:', '', content)
+            content = re.sub(r'(?i)^Here is the (?:answer|response).*?:\s*', '', content)
+            content = re.sub(r'(?i)^Based on the (?:search )?results.*?:\s*', '', content)
+            
+            # Override placeholder hallucinations if the small model ignores the system prompt
+            if re.search(r'\[insert.*?\]', content, re.IGNORECASE):
+                content = "I couldn't find the exact information in the search results."
+            else:
+                # Clean up ending fluff
+                content = re.sub(r'(?i)Note:\s*The response is based on[\s\S]*', '', content).strip()
+                
+            # Strip literal quotation marks that the LLM sometimes wraps its entire response in
+            content = re.sub(r'^["\']|["\']$', '', content.strip())
+                
             content = content.strip()
 
             # Parse and format thoughts using ReAct summary
@@ -769,10 +640,35 @@ def should_continue(state: AgentState) -> str:
         return "end"
 
     messages = state.get("messages", [])
-    last_message = messages[-1]
-    if not getattr(last_message, "tool_calls", None):
+    if not messages:
         return "end"
-    return "action"
+        
+    last_message = messages[-1]
+    
+    # Tool Validation Layer & Loop Control
+    is_chat_mode = state.get("is_chat_mode", False)
+    
+    tool_iterations = sum(1 for msg in messages if msg.__class__.__name__ == "ToolMessage")
+    max_iterations = 0 if is_chat_mode else 1
+    
+    if getattr(last_message, "tool_calls", None):
+        # Validation: If we are in Chat Mode, immediately reject hallucinated tools
+        if is_chat_mode:
+            logger.warning("Tool Validation: REJECTED tool call %s in Chat Mode", last_message.tool_calls)
+            # Remove the hallucinated tool calls to force a final text response instead of routing to action
+            last_message.tool_calls = []
+            return "end"
+            
+        # Validation: Limit ReAct Loops
+        if tool_iterations >= max_iterations:
+            logger.warning("Tool Validation: Max tool iterations reached (%d). Forcing END.", tool_iterations)
+            last_message.tool_calls = []
+            return "end"
+            
+        logger.info("Tool Validation: APPROVED tool call %s", last_message.tool_calls)
+        return "action"
+        
+    return "end"
 
 
 def should_loop(state: AgentState) -> str:
@@ -792,7 +688,30 @@ def should_loop(state: AgentState) -> str:
 
 workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
-workflow.add_node("action", ToolNode(all_combined_tools))
+
+original_tool_node = ToolNode(all_combined_tools)
+
+def benchmarked_tool_node(state: AgentState):
+    import time
+    from shared.benchmark_logger import log_metric
+    from shared.context import current_session_id
+    
+    session_id = current_session_id.get()
+    t_start = time.perf_counter()
+    result = original_tool_node.invoke(state)
+    t_end = time.perf_counter()
+    
+    messages = state.get("messages", [])
+    tool_calls = getattr(messages[-1], "tool_calls", []) if messages else []
+    tool_names = [tc.get("name") for tc in tool_calls if isinstance(tc, dict)]
+    
+    log_metric(session_id, "ToolExecution", {
+        "duration": t_end - t_start,
+        "tools_called": tool_names
+    })
+    return result
+
+workflow.add_node("action", benchmarked_tool_node)
 workflow.add_edge(START, "agent")
 workflow.add_conditional_edges("agent", should_continue, {"action": "action", "end": END})
 workflow.add_conditional_edges("action", should_loop, {"agent": "agent", "end": END})

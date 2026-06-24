@@ -48,7 +48,7 @@ from services.tools.git_tool import (
     git_checkout,
     git_branch
 )
-from services.tools.email_tool import send_email, save_to_drafts, read_emails, search_emails
+from services.tools.email_tool import send_email, send_email_fast, save_to_drafts, read_emails, search_emails
 from services.tools.pdf_tool import (
     extract_pdf_text,
     summarize_pdf,
@@ -130,6 +130,7 @@ all_tools = [
     delete_file,
     execute_shell_command,
     send_email,
+    send_email_fast,
     save_to_drafts,
     read_emails,
     search_emails,

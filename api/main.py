@@ -38,6 +38,24 @@ app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
 app.include_router(pdf.router, prefix="/api/pdf", tags=["PDF"])
 
 
+@app.on_event("startup")
+async def startup_event():
+    import threading
+    def boot_security_check():
+        try:
+            import services.fast_path
+            resp, _ = services.fast_path.process_fast_path_commands(["check security"])
+            if resp and "✅" not in resp:
+                import ctypes
+                # Show a warning dialog if threats are found
+                ctypes.windll.user32.MessageBoxW(0, f"OmniAgent Boot Security Alert:\n\n{resp}", "System Security Warning", 0x30 | 0x0)
+        except Exception as e:
+            logger.error(f"Boot security check failed: {e}")
+            
+    t = threading.Thread(target=boot_security_check, daemon=True)
+    t.start()
+
+
 @app.get("/health")
 def health_check():
     return {
@@ -53,6 +71,12 @@ def health_check():
 @app.get("/")
 def root():
     return {"message": "OmniAgent API is running. See /docs for API reference."}
+
+from fastapi.responses import Response
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
 
 
 from fastapi import Body
@@ -119,9 +143,27 @@ async def resize_desktop(payload: dict = Body(...)):
                 # Fuchsia / Magenta chroma key transparency (0x00FF00FF)
                 SetLayeredWindowAttributes(target_hwnd, 0x00FF00FF, 0, LWA_COLORKEY)
                 
-                # Resize and pin to Always-On-Top
+                # Calculate screen center bottom
+                screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+                screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+                
+                # Increase width to 800px
+                cx = 800
+                # Add 45px to height to account for the Edge title bar we will crop out
+                cy = 70 + 45 
+                
+                x = (screen_width - cx) // 2
+                y = screen_height - cy - 60  # Above taskbar
+                
+                # Resize, move, and pin to Always-On-Top
                 HWND_TOPMOST = -1
-                SetWindowPos(target_hwnd, HWND_TOPMOST, 0, 0, 400, 70, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+                SetWindowPos(target_hwnd, HWND_TOPMOST, x, y, cx, cy, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+                
+                # Crop out the top 45 pixels to completely hide the Edge title bar!
+                CreateRectRgn = ctypes.windll.gdi32.CreateRectRgn
+                SetWindowRgn = ctypes.windll.user32.SetWindowRgn
+                hRgn = CreateRectRgn(0, 45, cx, cy)
+                SetWindowRgn(target_hwnd, hRgn, True)
             else:
                 # Restore title bar and borders
                 new_style = current_style | WS_CAPTION | WS_THICKFRAME
@@ -131,9 +173,21 @@ async def resize_desktop(payload: dict = Body(...)):
                 new_exstyle = current_exstyle & ~WS_EX_LAYERED
                 SetWindowLong(target_hwnd, GWL_EXSTYLE, new_exstyle)
                 
-                # Restore normal size and unpin Always-On-Top
-                HWND_NOTOPMOST = -2
-                SetWindowPos(target_hwnd, HWND_NOTOPMOST, 0, 0, 800, 600, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+                # Center normal window
+                screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+                screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+                cx = 400
+                cy = 750
+                x = screen_width - cx - 40
+                y = (screen_height - cy) // 2
+                
+                # Restore normal size, move, and keep Always-On-Top
+                HWND_TOPMOST = -1
+                SetWindowPos(target_hwnd, HWND_TOPMOST, x, y, cx, cy, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+                
+                # Remove window cropping region to restore full window
+                SetWindowRgn = ctypes.windll.user32.SetWindowRgn
+                SetWindowRgn(target_hwnd, 0, True)
     except Exception as e:
         logger.error(f"Win32 window resize failed: {e}")
         

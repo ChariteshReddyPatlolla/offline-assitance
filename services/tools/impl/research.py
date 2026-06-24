@@ -10,6 +10,12 @@ def research_topic_raw(query: str) -> str:
     Uses the HTML DuckDuckGo endpoint (reliable, no JS required) to fetch real search results,
     then visits the top pages to extract actual content. Returns real URLs and real content only.
     """
+    import concurrent.futures
+    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_research_topic_sync_worker, query)
+        return future.result()
+
+def _research_topic_sync_worker(query: str) -> str:
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
         from services.tools.impl.browser import get_brave_path, web_search_raw
@@ -146,6 +152,12 @@ def research_topic_raw(query: str) -> str:
 
 def scrape_page_raw(url: str) -> str:
     """Navigate to a URL and extract its main text content using Playwright."""
+    import concurrent.futures
+    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_scrape_page_sync_worker, url)
+        return future.result()
+
+def _scrape_page_sync_worker(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     try:
@@ -193,6 +205,12 @@ def scrape_page_raw(url: str) -> str:
 
 def extract_links_raw(url: str) -> str:
     """Navigate to a URL and extract all links on it."""
+    import concurrent.futures
+    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_extract_links_sync_worker, url)
+        return future.result()
+
+def _extract_links_sync_worker(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     try:

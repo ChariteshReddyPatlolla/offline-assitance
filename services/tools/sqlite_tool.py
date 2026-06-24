@@ -24,9 +24,9 @@ def write_query(query: str, db_path: Optional[str] = None) -> str:
         db_path: Optional absolute database file path.
     """
     approval = require_approval(
-        action_key=f"sqlite:{query[:200]}",
+        action_key=f"write_query:{query[:200]}",
         description=f"Execute database write query:\n```sql\n{query}\n```",
-        details={"query": query, "db_path": db_path, "dangerous": True}
+        details={"query": query, "db_path": db_path, "dangerous": True, "tool": "write_query", "args": {"query": query, "db_path": db_path}}
     )
     if approval:
         return approval

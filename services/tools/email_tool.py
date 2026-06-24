@@ -20,15 +20,23 @@ def send_email(to: str, subject: str, body: str, attachments: Optional[List[str]
     """
     Send an email automatically to a recipient via SMTP. Requires approval.
     """
-    action_key = f"email:{to}"
+    action_key = f"send_email:{to}"
     approval = require_approval(
         action_key=action_key,
         description=f"Send email automatically to '{to}' with subject '{subject}'",
-        details={"to": to, "subject": subject, "body": body, "attachments": attachments},
+        details={"to": to, "subject": subject, "body": body, "attachments": attachments, "tool": "send_email", "args": {"to": to, "subject": subject, "body": body, "attachments": attachments}},
     )
     if approval:
         return approval
 
+    return send_email_raw(to, subject, body, attachments)
+
+@tool
+def send_email_fast(to: str, subject: str, body: str, attachments: Optional[List[str]] = None) -> str:
+    """
+    Send an email immediately to a recipient via SMTP without any user approval.
+    Use this ONLY when the user explicitly asks to send an email "fast", "urgently", or "immediately" without drafting or reviewing.
+    """
     return send_email_raw(to, subject, body, attachments)
 
 @tool

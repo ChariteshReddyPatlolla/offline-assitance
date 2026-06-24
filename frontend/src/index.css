@@ -437,15 +437,21 @@ html, body, #root {
 .toast.warning { border-color: var(--warning); }
 
 /* ── Compact Mode (Spotlight Search style) ── */
+html:has(.app.compact-mode),
+body:has(.app.compact-mode),
+#root:has(.app.compact-mode) {
+  background: #FF00FF !important;
+}
+
 .app.compact-mode {
-  background: #161316 !important; /* Fuchsia/Magenta chroma key for absolute desktop transparency */
+  background: #FF00FF !important; /* Fuchsia/Magenta chroma key for absolute desktop transparency */
   border: none !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   overflow: hidden;
   height: 70px !important;
-  width: 400px !important;
+  width: 800px !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -489,6 +495,9 @@ html, body, #root {
 }
 
 .app.compact-mode .input-wrap textarea {
+  flex: 1 !important;
+  width: 100% !important;
+  min-width: 50px !important;
   height: auto !important;
   min-height: 24px !important;
   line-height: 1.4 !important;

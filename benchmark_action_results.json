@@ -1,0 +1,78 @@
+{
+    "OS Commands": [
+        {
+            "query": "Open calculator",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        },
+        {
+            "query": "Open notepad",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        }
+    ],
+    "File Operations": [
+        {
+            "query": "Create a file named test_file.txt inside C:\\Users\\patlo\\Desktop\\benchmark_temp with the content 'hello'",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        },
+        {
+            "query": "Read the file C:\\Users\\patlo\\Desktop\\benchmark_temp\\test_file.txt",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        },
+        {
+            "query": "Delete the file C:\\Users\\patlo\\Desktop\\benchmark_temp\\test_file.txt",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        }
+    ],
+    "Browser Automation": [
+        {
+            "query": "Open browser and go to wikipedia.org",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        },
+        {
+            "query": "Search for 'Python' on wikipedia.org",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        },
+        {
+            "query": "Close browser",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        }
+    ],
+    "Research Tools": [
+        {
+            "query": "Research the latest news about Artificial Intelligence",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        },
+        {
+            "query": "Search for Python 3.12 release notes and summarize",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        }
+    ],
+    "Multi Step Tasks": [
+        {
+            "query": "Open wikipedia, search for Machine Learning, extract the first paragraph, and save it to C:\\Users\\patlo\\Desktop\\benchmark_temp\\ml.txt",
+            "latency": 0,
+            "response": "",
+            "error": "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/chat/ (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+        }
+    ]
+}

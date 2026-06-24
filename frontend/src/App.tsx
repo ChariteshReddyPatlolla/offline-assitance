@@ -234,7 +234,7 @@ function SettingsPage({ theme, onThemeToggle }: { theme: string; onThemeToggle: 
         <div className="settings-row">
           <div>
             <div className="settings-label">LLM Backend</div>
-            <div className="settings-sublabel">Ollama — llama3.1:8b (local)</div>
+            <div className="settings-sublabel">Ollama — llama3.2:latest (local)</div>
           </div>
           <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>● Online</span>
         </div>
@@ -521,9 +521,13 @@ export default function App() {
         }, 100);
       }
     } catch {
-      // Win32 fallback resizing for Microsoft Edge App Mode
+      // Fallback resizing for Microsoft Edge App Mode
       try {
-        await axios.post(`${API}/desktop/resize`, { compact });
+        if ((window as any).pywebview && (window as any).pywebview.api) {
+          await (window as any).pywebview.api.set_compact_mode(compact);
+        } else {
+          await axios.post(`${API}/desktop/resize`, { compact });
+        }
         setCompactMode(compact);
       } catch (err) {
         console.warn("Resize failed", err);
@@ -906,22 +910,7 @@ export default function App() {
                     const cleaned = t.replace(/[^a-zA-Z0-9]/g, '').trim();
                     if (cleaned.length === 0) return; // Ignore silent/hallucinated transcripts
 
-                    if (continuousMode) {
-                      sendMessage(t);
-                    } else {
-                      setMessages(prev => [...prev, {
-                        id: `voice_${Date.now()}`,
-                        role: 'assistant',
-                        content: `🎙️ **Voice Input Received:**\n> "${t}"\n\nShould I send this command?`,
-                        created_at: new Date().toISOString(),
-                        approval_request: {
-                          action_key: `voice_send_${Date.now()}`,
-                          session_id: sessionId || 'voice_input',
-                          original_message: t
-                        },
-                        approvalState: 'pending'
-                      }]);
-                    }
+                    sendMessage(t);
                   }} 
                   disabled={loading} 
                   isListening={setListening}

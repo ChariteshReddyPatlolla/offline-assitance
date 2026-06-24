@@ -43,17 +43,6 @@ WHEN TO USE TOOLS:
 - Research topics -> research_topic
 - Draft emails -> draft_email
 - Desktop automation -> screenshot, typing, hotkeys
-
-## Guidelines for Tool Execution
-- **Strict Native Tool Calling**: You MUST invoke tools using the native tool calling API. NEVER write JSON blocks, code blocks of function calls, or statements like 'Action: call ...' in your text response.
-- **Do Not Pre-Announce**: Do not say "I will call the execute_shell_command tool" or write text explaining that you will use a tool. Just invoke it natively immediately.
-- **Reasoning**: If a request requires multi-step planning or reasoning, you may think/reason briefly before calling the tool, but the tool invocation itself must be native.
-- **Examples of Tool Selection**:
-  - For weather, stock prices, news, or general real-time facts -> natively call `web_search`.
-  - To play video/audio -> natively call `search_youtube`.
-  - To open desktop apps -> natively call `open_application`.
-  - To write code in VS Code -> natively call `write_file`, then natively call `open_file_in_vscode`. DO NOT output JSON.
-  - To run terminal commands -> natively call `execute_shell_command`.
 """
 
 # Create autonomous ReAct agent

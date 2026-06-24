@@ -16,48 +16,90 @@ class TranscriptionResult(BaseModel):
     language: str = "en"
     duration: float = 0.0
 
+import speech_recognition as sr
+
+class SDAudioSource(sr.AudioSource):
+    def __init__(self, device=None, sample_rate=16000, chunk_size=1024):
+        import sounddevice as sd
+        self.device_index = device
+        self.SAMPLE_RATE = sample_rate
+        self.CHUNK = chunk_size
+        self.SAMPLE_WIDTH = 2
+        self.raw_stream = None
+        self.stream = None
+    
+    def __enter__(self):
+        import sounddevice as sd
+        self.raw_stream = sd.RawInputStream(
+            samplerate=self.SAMPLE_RATE,
+            blocksize=self.CHUNK,
+            device=self.device_index,
+            channels=1,
+            dtype='int16'
+        )
+        self.raw_stream.start()
+        
+        class StreamWrapper:
+            def __init__(self, raw_stream):
+                self.raw_stream = raw_stream
+            def read(self, size):
+                data, overflow = self.raw_stream.read(size)
+                return bytes(data)
+        
+        self.stream = StreamWrapper(self.raw_stream)
+        return self
+        
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.raw_stream:
+            self.raw_stream.stop()
+            self.raw_stream.close()
+
 @router.get("/listen", response_model=TranscriptionResult)
 async def listen_audio():
     """
-    Listens to the system microphone via sounddevice, saves to wav, transcribes via SpeechRecognition, and translates.
+    Listens to the system microphone via sounddevice until 1 second of silence is detected, 
+    transcribes via SpeechRecognition, and translates.
     """
     try:
         import speech_recognition as sr
         from mtranslate import translate
         import sounddevice as sd
-        from scipy.io.wavfile import write
     except ImportError:
         raise HTTPException(
             status_code=503,
             detail="Required audio packages not installed."
         )
 
-    fs = 44100  # Sample rate
-    seconds = 5  # Listen for 5 seconds
-
-    logger.info("Listening to system microphone for 5 seconds...")
+    logger.info("Listening to system microphone dynamically...")
     try:
-        # Record audio
-        myrecording = sd.rec(int(seconds * fs), samplerate=fs, channels=1, dtype='int16')
-        sd.wait()  # Wait until recording is finished
-        
-        # Save as temp WAV
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = tmp.name
-        
-        write(tmp_path, fs, myrecording)
-        
-        # Use SpeechRecognition on the file
+        # Find a suitable microphone device, avoiding Oculus Virtual Audio
+        device_index = None
+        try:
+            devices = sd.query_devices()
+            for i, dev in enumerate(devices):
+                if dev['max_input_channels'] > 0 and 'Oculus' not in dev['name']:
+                    # Prefer standard microphones
+                    if 'Microphone' in dev['name'] or 'Realtek' in dev['name']:
+                        device_index = i
+                        break
+            if device_index is None:
+                device_index = sd.default.device[0]
+        except Exception:
+            device_index = None
+
+        # Use SpeechRecognition with custom AudioSource
         recognizer = sr.Recognizer()
-        recognizer.dynamic_energy_threshold = False
-        recognizer.energy_threshold = 34000
-        recognizer.dynamic_energy_adjustment_damping = 0.010
-        recognizer.dynamic_energy_ratio = 1.0
-        recognizer.pause_threshold = 0.3
+        recognizer.pause_threshold = 1.0  # Stop after 1 second of silence
         
-        with sr.AudioFile(tmp_path) as source:
-            recognizer.adjust_for_ambient_noise(source)
-            audio = recognizer.record(source)
+        with SDAudioSource(device=device_index) as source:
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            logger.info("Ready for speech...")
+            try:
+                # Listen dynamically up to a 10-second max limit to prevent hanging indefinitely
+                audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+            except sr.WaitTimeoutError:
+                logger.info("No speech detected (WaitTimeoutError). Returning empty text.")
+                return TranscriptionResult(text="", language="en", duration=0.0)
             
         logger.info("Audio captured, transcribing...")
         text = recognizer.recognize_google(audio)
@@ -66,22 +108,19 @@ async def listen_audio():
         translated_text = translate(text, "en", "auto")
         logger.info(f"Translated Transcription: '{translated_text}'")
 
-        # Cleanup
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+        # Estimate duration
+        duration = len(audio.frame_data) / (source.SAMPLE_RATE * source.SAMPLE_WIDTH)
 
         return TranscriptionResult(
             text=translated_text,
             language="en", 
-            duration=seconds
+            duration=duration
         )
     except Exception as e:
         error_type = type(e).__name__
         if "UnknownValueError" in error_type:
             logger.info("No speech detected (UnknownValueError). Returning empty text.")
-            return TranscriptionResult(text="", language="en", duration=seconds)
+            return TranscriptionResult(text="", language="en", duration=0.0)
         if "RequestError" in error_type:
             raise HTTPException(status_code=500, detail=f"Could not request results from service; {e}")
         
