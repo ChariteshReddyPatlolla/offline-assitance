@@ -12,6 +12,13 @@ OmniAgent is a highly responsive, privacy-focused, offline-first AI desktop assi
 - **Total Privacy**: All processing (both Fast-path actions and LLM inference) occurs locally on your machine. No data leaves your device.
 - **Context-Aware**: Built-in trackers monitor your active window and working directory, giving OmniAgent full awareness of what you are currently looking at on your screen.
 
+## Recent Updates (24 June 2026)
+
+- **Email Approval Flow Restored**: Resolved an infinite loop bug where the agent would repeatedly request approval for an already executed `send_email` action. The agent now properly understands backend execution confirmations.
+- **Iteration Limits Adjusted**: Fixed a crash where the agent would hit a tight `max_iterations` limit immediately after completing a tool call.
+- **Removed Duplicate Tools**: Streamlined the agent's email toolset by removing confusing duplications (`send_email_fast`) and strictly enforcing proper tool usage over generic shell commands.
+- **Unicode Support**: Scrubbed hardcoded emojis that previously caused `UnicodeEncodeError` crashes on Windows PowerShell when rendering approval UI components.
+
 ## Installation
 
 1. Ensure Python 3.10+ is installed.

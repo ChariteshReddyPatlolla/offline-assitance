@@ -130,7 +130,6 @@ all_tools = [
     delete_file,
     execute_shell_command,
     send_email,
-    send_email_fast,
     save_to_drafts,
     read_emails,
     search_emails,

@@ -179,9 +179,10 @@ async def decide_approval(request: schemas.ApproveRequest, db: Session = Depends
 
         if tool_executed:
             decision_note = (
-                f"[TOOL_RESULT:{action_key}] The approved tool was successfully executed on the system with the following result:\n\n"
-                f"{tool_output}\n\n"
-                f"Please summarize this success result and confirm the completed task to the user."
+                f"[SYSTEM: TOOL ALREADY EXECUTED]\n"
+                f"The user approved the action '{action_key}', and the system HAS ALREADY EXECUTED IT successfully.\n"
+                f"Result:\n{tool_output}\n\n"
+                f"CRITICAL INSTRUCTION: DO NOT CALL ANY TOOLS. The tool was already run. Just write a short conversational message telling the user it was successful."
             )
         else:
             decision_note = f"[USER_APPROVED:{action_key}] The user approved this action. Please proceed and execute it now."

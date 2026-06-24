@@ -19,6 +19,7 @@ def save_to_drafts(to: str, subject: str, body: str, attachments: Optional[List[
 def send_email(to: str, subject: str, body: str, attachments: Optional[List[str]] = None) -> str:
     """
     Send an email automatically to a recipient via SMTP. Requires approval.
+    ALWAYS use this tool to send emails. NEVER use execute_shell_command or sendmail.
     """
     action_key = f"send_email:{to}"
     approval = require_approval(

@@ -38,7 +38,6 @@ from services.tools import (
     web_search,
     research_topic,
     send_email,
-    send_email_fast,
     save_to_drafts,
     read_emails,
     search_emails,
@@ -238,7 +237,6 @@ def get_active_tools(query: str, history: list) -> list:
     if any(k in text for k in email_keywords):
         active.extend([
             send_email,
-            send_email_fast,
             save_to_drafts,
             read_emails,
             search_emails,
@@ -649,7 +647,7 @@ def should_continue(state: AgentState) -> str:
     is_chat_mode = state.get("is_chat_mode", False)
     
     tool_iterations = sum(1 for msg in messages if msg.__class__.__name__ == "ToolMessage")
-    max_iterations = 0 if is_chat_mode else 1
+    max_iterations = 0 if is_chat_mode else 3
     
     if getattr(last_message, "tool_calls", None):
         # Validation: If we are in Chat Mode, immediately reject hallucinated tools
