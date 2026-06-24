@@ -327,6 +327,10 @@ async def chat_endpoint(
     approval_request = None
     checklist_request = None
 
+    temp_approval = None
+    temp_checklist = None
+    
+    # First, check for any pending approvals or checklists in the recent messages
     for msg in reversed(final_state["messages"]):
         if msg.content and isinstance(msg.content, str) and msg.content.strip():
             temp_approval = _extract_approval_request(msg.content.strip())
@@ -342,7 +346,11 @@ async def chat_endpoint(
                 agent_response = msg.content.strip()
                 approval_request = temp_approval
                 break
-            elif isinstance(msg, AIMessage):
+                
+    # If no approval/checklist found, just grab the last AIMessage
+    if not approval_request and not checklist_request:
+        for msg in reversed(final_state["messages"]):
+            if isinstance(msg, AIMessage) and msg.content and msg.content.strip():
                 agent_response = msg.content.strip()
                 break
 

@@ -83,6 +83,11 @@ def process_task(task_payload):
 
     # Extract final response
     agent_response = "I'm sorry, I was unable to generate a response."
+    
+    temp_approval = None
+    temp_checklist = None
+    
+    # First, check for any pending approvals or checklists in the recent messages
     for msg in reversed(final_state["messages"]):
         if msg.content and isinstance(msg.content, str) and msg.content.strip():
             temp_approval = _extract_approval_request(msg.content.strip())
@@ -95,7 +100,11 @@ def process_task(task_payload):
             elif temp_approval:
                 agent_response = msg.content.strip()
                 break
-            elif isinstance(msg, AIMessage):
+                
+    # If no approval/checklist found, just grab the last AIMessage
+    if not temp_approval and not temp_checklist:
+        for msg in reversed(final_state["messages"]):
+            if isinstance(msg, AIMessage) and msg.content and msg.content.strip():
                 agent_response = msg.content.strip()
                 break
 
