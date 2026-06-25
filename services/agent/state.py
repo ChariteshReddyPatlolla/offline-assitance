@@ -9,3 +9,4 @@ class AgentState(TypedDict, total=False):
     pending_tool_call: Optional[dict]
     approval_granted: bool
     approval_request: Optional[dict]  # Populated when a tool needs approval
+    is_chat_mode: bool  # Flag indicating whether to skip tools/RAG for lightweight queries

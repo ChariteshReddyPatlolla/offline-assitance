@@ -1,107 +1,154 @@
-import os
-import subprocess
-import webbrowser
 from langchain_core.tools import tool
+from services.mcp.client import MCPClientManager
 
+from typing import Optional
 
 @tool
-def open_application(app_name: str) -> str:
+def open_application(app_name: str, path: Optional[str] = None) -> str:
     """
     Open a desktop application or program by name.
-    Examples: 'notepad', 'calculator', 'chrome', 'vscode', 'explorer', 'cmd'
-    Also handles special names like 'file explorer', 'vs code', 'visual studio code'.
     """
-    name_lower = app_name.lower().strip()
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "open_application", app_name=app_name, path=path
+    )
 
-    # Common name mappings
-    aliases = {
-        "file explorer": "explorer",
-        "files": "explorer",
-        "vs code": "code",
-        "visual studio code": "code",
-        "vscode": "code",
-        "terminal": "cmd",
-        "command prompt": "cmd",
-        "powershell": "powershell",
-        "notepad": "notepad",
-        "calculator": "calc",
-        "chrome": "chrome",
-        "google chrome": "chrome",
-        "firefox": "firefox",
-        "edge": "msedge",
-        "microsoft edge": "msedge",
-        "task manager": "taskmgr",
-        "paint": "mspaint",
-        "word": "winword",
-        "excel": "excel",
-        "spotify": "spotify",
-    }
-
-    executable = aliases.get(name_lower, name_lower)
-
-    try:
-        # Try using the Windows 'start' command (handles paths, app names, .exe)
-        subprocess.Popen(
-            ["cmd", "/c", "start", "", executable],
-            shell=False,
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
-        )
-        return f"✅ Opened '{app_name}' successfully."
-    except Exception as e1:
-        try:
-            os.startfile(executable)
-            return f"✅ Opened '{app_name}' successfully."
-        except Exception as e2:
-            return f"❌ Could not open '{app_name}'. Error: {str(e2)}"
-
+@tool
+def close_application(app_name: str) -> str:
+    """
+    Closes a desktop application or specific window by its name or title.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "close_application", app_name=app_name
+    )
 
 @tool
 def take_screenshot_description() -> str:
     """
     Describes the current screen state. Returns a summary of what's visible.
-    Used to understand the desktop context before taking actions.
     """
-    try:
-        import pyautogui
-        size = pyautogui.size()
-        pos = pyautogui.position()
-        return f"Screen size: {size.width}x{size.height}. Current mouse position: ({pos.x}, {pos.y})."
-    except ImportError:
-        return "Screen info: pyautogui not available. Operating on Windows desktop."
-    except Exception as e:
-        return f"Screen info unavailable: {str(e)}"
-
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "take_screenshot_description"
+    )
 
 @tool
 def type_text_at_cursor(text: str) -> str:
     """
     Types the given text at the current cursor position using keyboard simulation.
-    Use this to fill in forms, write code, or input text into any application.
     """
-    try:
-        import pyautogui
-        import time
-        time.sleep(0.5)  # Small delay to let user focus the target window
-        pyautogui.typewrite(text, interval=0.03)
-        return f"✅ Typed: '{text[:50]}{'...' if len(text) > 50 else ''}'"
-    except ImportError:
-        return "❌ pyautogui not available. Cannot type text."
-    except Exception as e:
-        return f"❌ Error typing text: {str(e)}"
-
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "type_text_at_cursor", text=text
+    )
 
 @tool
 def press_hotkey(keys: str) -> str:
     """
     Press a keyboard shortcut or hotkey combination.
-    Examples: 'ctrl+c', 'ctrl+v', 'alt+tab', 'win+d', 'ctrl+shift+esc'
     """
-    try:
-        import pyautogui
-        key_list = [k.strip() for k in keys.lower().split("+")]
-        pyautogui.hotkey(*key_list)
-        return f"✅ Pressed hotkey: {keys}"
-    except ImportError:
-        return "❌ pyautogui not available."
-    except Exception as e:
-        return f"❌ Error pressing hotkey '{keys}': {str(e)}"
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "press_hotkey", keys=keys
+    )
+
+@tool
+def search_start_menu(query: str) -> list:
+    """
+    Search for applications in the Start Menu.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "search_start_menu", query=query
+    )
+
+@tool
+def focus_application(app_name: str) -> str:
+    """
+    Focus an application by bringing it to the foreground.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "focus_application", app_name=app_name
+    )
+
+@tool
+def minimize_application(app_name: str) -> str:
+    """
+    Minimize an application window.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "minimize_application", app_name=app_name
+    )
+
+@tool
+def maximize_application(app_name: str) -> str:
+    """
+    Maximize an application window.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "maximize_application", app_name=app_name
+    )
+
+@tool
+def run_editor_sync_demo() -> str:
+    """
+    Natively automates the complete visual VS Code and Notepad editor synchronization demo.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "vscode", "run_editor_sync_demo"
+    )
+
+@tool
+def open_file_in_vscode(filepath: str) -> str:
+    """
+    Open a file in the VS Code desktop app.
+    """
+    from shared.context import active_session_dir
+    import os
+    user_profile = os.environ.get("USERPROFILE", r"C:\Users\patlo")
+    desktop = os.path.join(user_profile, "Desktop")
+    onedrive_desktop = os.path.join(user_profile, "OneDrive", "Desktop")
+    if os.path.exists(onedrive_desktop):
+        desktop = onedrive_desktop
+        
+    current_dir = active_session_dir.get() or desktop
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(current_dir, filepath)
+    abs_path = os.path.abspath(filepath)
+    return MCPClientManager.get_instance().call_tool(
+        "vscode", "open_file_in_vscode", filepath=abs_path
+    )
+
+@tool
+def open_folder_in_vscode(folderpath: str) -> str:
+    """
+    Open a folder in the VS Code desktop app.
+    """
+    from shared.context import active_session_dir
+    import os
+    user_profile = os.environ.get("USERPROFILE", r"C:\Users\patlo")
+    desktop = os.path.join(user_profile, "Desktop")
+    onedrive_desktop = os.path.join(user_profile, "OneDrive", "Desktop")
+    if os.path.exists(onedrive_desktop):
+        desktop = onedrive_desktop
+        
+    current_dir = active_session_dir.get() or desktop
+    if not os.path.isabs(folderpath):
+        folderpath = os.path.join(current_dir, folderpath)
+    abs_path = os.path.abspath(folderpath)
+    return MCPClientManager.get_instance().call_tool(
+        "vscode", "open_folder_in_vscode", folderpath=abs_path
+    )
+
+@tool
+def run_command_in_vscode_terminal(command: str) -> str:
+    """
+    Focus VS Code, open the integrated terminal, and execute a command.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "vscode", "run_command_in_vscode_terminal", command=command
+    )
+
+@tool
+def execute_workflow(steps: list) -> str:
+    """
+    Execute a sequence of tool calls across different MCP servers.
+    """
+    return MCPClientManager.get_instance().call_tool(
+        "automation", "execute_workflow", steps=steps
+    )

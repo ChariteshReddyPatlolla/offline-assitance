@@ -14,6 +14,7 @@ class Message(MessageBase):
     created_at: datetime
     tools_used: Optional[List[str]] = []
     approval_request: Optional[Dict[str, Any]] = None
+    checklist_request: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -25,6 +26,11 @@ class Session(BaseModel):
     title: Optional[str] = "New Chat"
     created_at: datetime
     updated_at: datetime
+    current_app: Optional[str] = None
+    current_directory: Optional[str] = None
+    current_file: Optional[str] = None
+    open_tabs: Optional[str] = None
+    last_action: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -53,9 +59,18 @@ class ApproveRequest(BaseModel):
     approved: bool
 
 
+class ChecklistSubmitRequest(BaseModel):
+    action_key: str
+    session_id: str
+    user_id: str
+    selected_items: List[Dict[str, Any]]
+    original_message: str
+
+
 class ExplainRequest(BaseModel):
     text: str
-
+    question: Optional[str] = None
+    document_id: Optional[str] = None
 
 class ExplainResponse(BaseModel):
     explanation: str

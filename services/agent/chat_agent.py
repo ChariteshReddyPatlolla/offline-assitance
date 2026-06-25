@@ -9,8 +9,9 @@ from services.tools import all_tools as tools
 
 # Local Ollama model
 llm = ChatOllama(
-    model="llama3.1:8b",
+    model="llama3.2:latest",
     temperature=0.2,   # Lower temperature improves tool-calling reliability
+    keep_alive=-1      # Keep model loaded in memory indefinitely
 )
 
 # Strong system prompt to force tool usage
@@ -30,27 +31,18 @@ GENERAL RULES:
 
 WHEN TO USE TOOLS:
 - Current information (weather, news, prices, facts) -> web_search
-- Open websites -> open_url_in_browser
+- Deep Web Automation -> You can fully control the browser! Use `browser_navigate`, `browser_click`, `browser_type`, `browser_extract_text`, `browser_wait_for`, and `browser_close` to interact with complex web apps (like Overleaf, GitHub). You can read the screen, click buttons, type code into web IDEs, and re-run code automatically!
+- Open websites (simple) -> open_url_in_browser
 - Play videos/music -> search_youtube
 - Open installed applications -> open_application
 - Read/write/delete/list files -> file tools
+- Write code in VS Code -> Use `write_file` to generate the code, then use `open_file_in_vscode` to visually pop it open for the user.
 - Execute terminal commands -> execute_shell_command
 - Git repository analysis -> git_status, git_log, git_diff, analyze_repo
 - PDF extraction/summarization -> extract_pdf_text, summarize_pdf
 - Research topics -> research_topic
 - Draft emails -> draft_email
 - Desktop automation -> screenshot, typing, hotkeys
-
-## Guidelines for Tool Execution
-- **Strict Native Tool Calling**: You MUST invoke tools using the native tool calling API. NEVER write JSON blocks, code blocks of function calls, or statements like 'Action: call ...' in your text response.
-- **Do Not Pre-Announce**: Do not say "I will call the execute_shell_command tool" or write text explaining that you will use a tool. Just invoke it natively immediately.
-- **Reasoning**: If a request requires multi-step planning or reasoning, you may think/reason briefly before calling the tool, but the tool invocation itself must be native.
-- **Examples of Tool Selection**:
-  - For weather, stock prices, news, or general real-time facts -> select and call `web_search` natively.
-  - To play video/audio -> select and call `search_youtube` natively.
-  - To open desktop apps (notepad, chrome, vscode) -> select and call `open_application` natively.
-  - To run terminal commands -> select and call `execute_shell_command` natively.
-  - To research a topic in-depth -> select and call `research_topic` natively.
 """
 
 # Create autonomous ReAct agent

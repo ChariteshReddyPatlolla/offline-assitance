@@ -4,7 +4,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   BrainCircuit, PlusSquare, MessageSquare, FileText, Settings,
-  Mic, MicOff, Send, Trash2, ChevronLeft, Sun, Moon, Pin, Database
+  Mic, MicOff, Send, Trash2, ChevronLeft, Sun, Moon, Pin, Database,
+  Minimize2, Maximize2, Square, Activity
 } from 'lucide-react';
 import axios from 'axios';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -22,7 +23,9 @@ interface Msg {
   id: string; role: 'user' | 'assistant';
   content: string; created_at: string;
   approval_request?: { action_key: string; session_id: string; original_message: string } | null;
+  checklist_request?: { action_key: string; session_id: string; original_message: string; data: { items: { id: string, title: string, desc: string, [key: string]: any }[] } } | null;
   approvalState?: 'pending' | 'approved' | 'denied';
+  checklistState?: 'pending' | 'submitted';
 }
 interface Session { id: string; title: string; }
 type Page = 'chat' | 'settings' | 'pdf' | 'memory';
@@ -57,84 +60,149 @@ function ApprovalCard({ msg, onDecide }: { msg: Msg; onDecide: (key: string, app
   );
 }
 
+// ─── ChecklistCard ────────────────────────────────────────────────────────────
+function ChecklistCard({ msg, onSubmit }: { msg: Msg; onSubmit: (key: string, items: any[]) => void }) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  if (!msg.checklist_request) return null;
+  const req = msg.checklist_request;
+  const items = req.data?.items || [];
+
+  const toggleItem = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  if (msg.checklistState === 'submitted') {
+    return (
+      <div className="checklist-card">
+        <div className="approval-decided approved">
+          ✅ Checklist submitted successfully.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="checklist-card">
+      <div className="checklist-card-title">📋 Select Items for Processing</div>
+      <div className="checklist-items">
+        {items.map(item => (
+          <label key={item.id} className={`checklist-item ${selectedIds.has(item.id) ? 'selected' : ''}`}>
+            <input 
+              type="checkbox" 
+              checked={selectedIds.has(item.id)} 
+              onChange={() => toggleItem(item.id)} 
+            />
+            <div className="checklist-item-content">
+              <div className="checklist-item-title">{item.title}</div>
+              <div className="checklist-item-desc">{item.desc}</div>
+            </div>
+          </label>
+        ))}
+      </div>
+      <button 
+        className="btn-approve" 
+        style={{ marginTop: 12, width: '100%' }}
+        disabled={selectedIds.size === 0}
+        onClick={() => {
+          const selected = items.filter(i => selectedIds.has(i.id));
+          onSubmit(req.action_key, selected);
+        }}
+      >
+        Submit Selected ({selectedIds.size})
+      </button>
+    </div>
+  );
+}
+
 // ─── MessageBubble ────────────────────────────────────────────────────────────
-function MessageBubble({ msg, onDecide }: { msg: Msg; onDecide: (key: string, approved: boolean) => void }) {
+function MessageBubble({ msg, onDecide, onChecklistSubmit }: { msg: Msg; onDecide: (key: string, approved: boolean) => void; onChecklistSubmit: (key: string, items: any[]) => void }) {
   const isUser = msg.role === 'user';
   return (
     <div className={`msg-row ${msg.role}`}>
       <div className="msg-avatar">{isUser ? '👤' : '🤖'}</div>
-      <div>
-        <div className={`msg-bubble`}>
-          {isUser ? (
-            <span>{msg.content}</span>
-          ) : (
-            <ReactMarkdown
-              components={{
-                code({ node, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const inline = !match;
-                  return !inline ? (
-                    <SyntaxHighlighter style={oneDark as any} language={match![1]} PreTag="div">
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
-                  ) : (
-                    <code className={className} {...props}>{children}</code>
-                  );
-                },
-                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-              }}
-            >
-              {msg.content}
-            </ReactMarkdown>
-          )}
-        </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {msg.content && (
+          <div className={`msg-bubble`}>
+            {isUser ? (
+              <span>{msg.content}</span>
+            ) : (
+              <ReactMarkdown
+                components={{
+                  code({ node, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || '');
+                    const inline = !match;
+                    return !inline ? (
+                      <SyntaxHighlighter style={oneDark as any} language={match![1]} PreTag="div">
+                        {String(children).replace(/\n$/, '')}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className={className} {...props}>{children}</code>
+                    );
+                  },
+                  a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+                }}
+              >
+                {msg.content}
+              </ReactMarkdown>
+            )}
+          </div>
+        )}
         {msg.approval_request && <ApprovalCard msg={msg} onDecide={onDecide} />}
+        {msg.checklist_request && <ChecklistCard msg={msg} onSubmit={onChecklistSubmit} />}
       </div>
     </div>
   );
 }
 
 // ─── VoiceButton ─────────────────────────────────────────────────────────────
-function VoiceButton({ onTranscript, disabled, isListening }: { onTranscript: (t: string) => void; disabled: boolean; isListening: (state: boolean) => void }) {
+function VoiceButton({ onTranscript, disabled, isListening, continuousMode }: { onTranscript: (t: string) => void; disabled: boolean; isListening: (state: boolean) => void; continuousMode?: boolean }) {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  const mediaRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
 
   const toggle = async () => {
-    if (recording) {
-      mediaRef.current?.stop();
-      setRecording(false);
-      return;
-    }
+    if (recording || transcribing) return;
+    
+    setRecording(true);
+    setTranscribing(true);
+    isListening(true);
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      chunksRef.current = [];
-      mr.ondataavailable = e => chunksRef.current.push(e.data);
-      mr.onstop = async () => {
-        setTranscribing(true);
-        isListening(false);
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const form = new FormData();
-        form.append('audio', blob, 'audio.webm');
-        try {
-          const res = await axios.post(`${API}/voice/transcribe`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-          if (res.data.text) onTranscript(res.data.text);
-        } catch { /* silently fail */ }
-        setTranscribing(false);
-        stream.getTracks().forEach(t => t.stop());
-      };
-      mr.start();
-      mediaRef.current = mr;
-      setRecording(true);
-      isListening(true);
-    } catch { alert('Microphone access denied or unavailable.'); }
+      const res = await axios.get(`${API}/voice/listen`);
+      if (res.data.text) {
+         onTranscript(res.data.text);
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.response?.status !== 400 && !continuousMode) {
+          alert('Voice listening failed or timed out.');
+      }
+    } finally {
+      setRecording(false);
+      setTranscribing(false);
+      isListening(false);
+    }
   };
 
+  useEffect(() => {
+    let timeoutId: any;
+    if (continuousMode && !recording && !transcribing && !disabled) {
+      // Add a small delay between continuous listens to prevent UI lockup
+      timeoutId = setTimeout(() => {
+        toggle();
+      }, 500);
+    }
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  }, [continuousMode, recording, transcribing, disabled]);
+
   return (
-    <button className={`icon-btn mic ${recording ? 'recording' : ''}`} onClick={toggle} disabled={disabled || transcribing} title={recording ? 'Stop recording' : 'Voice input'}>
-      {transcribing ? <span style={{fontSize: '0.65rem', fontWeight: 'bold'}}>...</span> : recording ? <MicOff size={16} /> : <Mic size={16} />}
+    <button className={`icon-btn mic ${recording ? 'recording' : ''}`} onClick={toggle} disabled={disabled || transcribing} title={recording ? 'Listening via Microphone' : 'Voice input'}>
+      {transcribing ? <span style={{fontSize: '0.65rem', fontWeight: 'bold'}}>...</span> : <Mic size={16} />}
     </button>
   );
 }
@@ -166,7 +234,7 @@ function SettingsPage({ theme, onThemeToggle }: { theme: string; onThemeToggle: 
         <div className="settings-row">
           <div>
             <div className="settings-label">LLM Backend</div>
-            <div className="settings-sublabel">Ollama — llama3.1:8b (local)</div>
+            <div className="settings-sublabel">Ollama — llama3.2:latest (local)</div>
           </div>
           <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>● Online</span>
         </div>
@@ -183,8 +251,8 @@ function SettingsPage({ theme, onThemeToggle }: { theme: string; onThemeToggle: 
         <h3>🎙️ Voice (Speech-to-Text)</h3>
         <div className="settings-row">
           <div>
-            <div className="settings-label">faster-whisper STT</div>
-            <div className="settings-sublabel">Local, offline voice transcription</div>
+            <div className="settings-label">SpeechRecognition API</div>
+            <div className="settings-sublabel">Direct system microphone transcription & translation</div>
           </div>
           <span style={{ fontSize: '0.75rem', color: voiceStatus?.available ? 'var(--success)' : 'var(--danger)' }}>
             {voiceStatus === null ? '...' : voiceStatus.available ? '● Available' : '● Not installed'}
@@ -192,7 +260,7 @@ function SettingsPage({ theme, onThemeToggle }: { theme: string; onThemeToggle: 
         </div>
         {voiceStatus && !voiceStatus.available && (
           <div style={{ marginTop: 8, fontSize: '0.8rem', color: 'var(--text-2)', background: 'var(--bg-3)', borderRadius: 6, padding: '8px 12px' }}>
-            Run: <code>pip install faster-whisper</code> then restart the API server.
+            Run: <code>pip install SpeechRecognition pyaudio mtranslate</code> then restart the API server.
           </div>
         )}
       </div>
@@ -387,11 +455,15 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [continuousMode, setContinuousMode] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const userId = getUserId();
+  const [compactMode, setCompactMode] = useState(false);
+  const prevGeometryRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
 
   // Apply theme
   useEffect(() => {
@@ -411,6 +483,55 @@ export default function App() {
       setAlwaysOnTop(newState);
     } catch (e) {
       console.warn("Tauri window API not available", e);
+    }
+  };
+
+  const handleToggleCompact = async (compact: boolean) => {
+    try {
+      const appWindow = getCurrentWindow();
+      if (compact) {
+        // Save current geometry to restore later
+        const size = await appWindow.innerSize();
+        const factor = await appWindow.scaleFactor();
+        const physicalPos = await appWindow.outerPosition();
+        
+        prevGeometryRef.current = {
+          width: Math.round(size.width / factor),
+          height: Math.round(size.height / factor),
+          x: Math.round(physicalPos.x / factor),
+          y: Math.round(physicalPos.y / factor)
+        };
+        
+        // Dynamic backend resize (applies Win32 style transformations)
+        await axios.post(`${API}/desktop/resize`, { compact: true });
+        setCompactMode(true);
+      } else {
+        // Dynamic backend resize (restores normal geometry & normal native window decorations)
+        await axios.post(`${API}/desktop/resize`, { compact: false });
+        
+        // Wait briefly for Win32 to restore styles before moving
+        setTimeout(async () => {
+          if (prevGeometryRef.current) {
+            const { width, height, x, y } = prevGeometryRef.current;
+            // Set size and position back to their original geometries
+            await appWindow.setSize(new (await import('@tauri-apps/api/dpi')).LogicalSize(width, height));
+            await appWindow.setPosition(new (await import('@tauri-apps/api/dpi')).LogicalPosition(x, y));
+          }
+          setCompactMode(false);
+        }, 100);
+      }
+    } catch {
+      // Fallback resizing for Microsoft Edge App Mode
+      try {
+        if ((window as any).pywebview && (window as any).pywebview.api) {
+          await (window as any).pywebview.api.set_compact_mode(compact);
+        } else {
+          await axios.post(`${API}/desktop/resize`, { compact });
+        }
+        setCompactMode(compact);
+      } catch (err) {
+        console.warn("Resize failed", err);
+      }
     }
   };
 
@@ -450,8 +571,10 @@ export default function App() {
     const tempUser: Msg = { id: `tmp_${Date.now()}`, role: 'user', content: msg, created_at: new Date().toISOString() };
     setMessages(prev => [...prev, tempUser]);
 
+    const controller = new AbortController();
+    setAbortController(controller);
     try {
-      const r = await axios.post(`${API}/chat/`, { session_id: sessionId, message: msg, user_id: userId });
+      const r = await axios.post(`${API}/chat/`, { session_id: sessionId, message: msg, user_id: userId }, { signal: controller.signal });
       const data = r.data as Msg & { session_id?: string };
       if (!sessionId && data.session_id) {
         setSessionId(data.session_id);
@@ -460,13 +583,77 @@ export default function App() {
       setMessages(prev => [...prev, {
         ...data,
         approvalState: data.approval_request ? 'pending' : undefined,
+        checklistState: data.checklist_request ? 'pending' : undefined,
       }]);
-    } catch {
+    } catch (error) {
+      if (axios.isCancel(error)) {
+        setMessages(prev => [...prev, {
+          id: `err_${Date.now()}`, role: 'assistant', content: '🛑 Generation stopped by user.',
+          created_at: new Date().toISOString(),
+        }]);
+      } else {
+        setMessages(prev => [...prev, {
+          id: `err_${Date.now()}`, role: 'assistant', content: '❌ Could not reach OmniAgent API. Is the backend running?',
+          created_at: new Date().toISOString(),
+        }]);
+      }
+    } finally { 
+      setLoading(false); 
+      setAbortController(null);
+    }
+  };
+
+  const handleChecklistSubmit = async (actionKey: string, items: any[]) => {
+    setMessages(prev => prev.map(m =>
+      m.checklist_request?.action_key === actionKey
+        ? { ...m, checklistState: 'submitted' }
+        : m
+    ));
+
+    const checkMsg = messages.find(m => m.checklist_request?.action_key === actionKey);
+    if (!checkMsg?.checklist_request) return;
+
+    setLoading(true);
+    const controller = new AbortController();
+    setAbortController(controller);
+    try {
+      const r = await axios.post(`${API}/chat/submit_checklist`, {
+        action_key: actionKey,
+        session_id: checkMsg.checklist_request.session_id || sessionId,
+        user_id: userId,
+        selected_items: items,
+        original_message: checkMsg.checklist_request.original_message,
+      }, { signal: controller.signal });
+      const data = r.data as Msg;
       setMessages(prev => [...prev, {
-        id: `err_${Date.now()}`, role: 'assistant', content: '❌ Could not reach OmniAgent API. Is the backend running?',
-        created_at: new Date().toISOString(),
+        ...data,
+        approvalState: data.approval_request ? 'pending' : undefined,
+        checklistState: data.checklist_request ? 'pending' : undefined,
       }]);
-    } finally { setLoading(false); }
+    } catch (error) {
+      if (!axios.isCancel(error)) {
+        setMessages(prev => [...prev, {
+          id: `err_${Date.now()}`, role: 'assistant',
+          content: '❌ Error submitting checklist.',
+          created_at: new Date().toISOString(),
+        }]);
+      }
+    } finally { 
+      setLoading(false); 
+      setAbortController(null);
+    }
+  };
+
+  const stopGeneration = async () => {
+    if (abortController) {
+      abortController.abort();
+    }
+    if (!sessionId) return;
+    try {
+      await axios.post(`${API}/chat/stop/${sessionId}`);
+    } catch {
+      console.warn("Could not send stop signal");
+    }
   };
 
   const handleApproval = async (actionKey: string, approved: boolean) => {
@@ -507,7 +694,12 @@ export default function App() {
         original_message: approvalMsg.approval_request.original_message,
         approved,
       });
-      setMessages(prev => [...prev, { ...r.data, approvalState: undefined }]);
+      const data = r.data as Msg;
+      setMessages(prev => [...prev, {
+        ...data,
+        approvalState: data.approval_request ? 'pending' : undefined,
+        checklistState: data.checklist_request ? 'pending' : undefined,
+      }]);
     } catch {
       setMessages(prev => [...prev, {
         id: `err_${Date.now()}`, role: 'assistant',
@@ -534,6 +726,74 @@ export default function App() {
     'Explain this shell command: ls -la 🖥️',
   ];
 
+  if (compactMode) {
+    return (
+      <div className="app compact-mode">
+        <div className="main" data-tauri-drag-region>
+          <div className="input-area" data-tauri-drag-region>
+            <div className="input-wrap" data-tauri-drag-region>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={e => { setInput(e.target.value); }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                placeholder={listening ? "Listening..." : "Message OmniAgent…"}
+                rows={1}
+              />
+              <button 
+                className={`icon-btn inline-control pin-btn ${alwaysOnTop ? 'active' : ''}`} 
+                onClick={toggleAlwaysOnTop} 
+                title="Toggle Always on Top"
+                style={{ color: alwaysOnTop ? 'var(--accent)' : 'var(--text-3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Pin size={16} />
+              </button>
+              <button 
+                className="icon-btn inline-control max-btn" 
+                onClick={() => handleToggleCompact(false)} 
+                title="Restore Full Window"
+                style={{ color: 'var(--text-3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Maximize2 size={16} />
+              </button>
+              <VoiceButton 
+                continuousMode={continuousMode}
+                onTranscript={t => {
+                  const cleaned = t.replace(/[^a-zA-Z0-9]/g, '').trim();
+                  if (cleaned.length === 0) return;
+                  if (continuousMode) {
+                    sendMessage(t);
+                  } else {
+                    sendMessage(t); // We will update this to handle approval if needed, wait, compact mode usually just sends.
+                  }
+                }} 
+                disabled={loading} 
+                isListening={setListening}
+              />
+              <button
+                className={`icon-btn inline-control ${continuousMode ? 'active' : ''}`}
+                onClick={() => setContinuousMode(!continuousMode)}
+                title="Continuous Copilot Mode"
+                style={{ color: continuousMode ? 'var(--success)' : 'var(--text-3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Activity size={16} />
+              </button>
+              {loading ? (
+                <button className="icon-btn send stop-btn" onClick={stopGeneration} title="Stop Agent" style={{color: 'var(--danger)', background: 'transparent'}}>
+                  <Square size={14} fill="currentColor" />
+                </button>
+              ) : (
+                <button className="icon-btn send" onClick={() => sendMessage()} disabled={!input.trim()}>
+                  <Send size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {/* ── Sidebar ── */}
@@ -543,7 +803,7 @@ export default function App() {
           OmniAgent
         </div>
 
-        <button className="new-chat-btn" onClick={() => { setSessionId(null); setMessages([]); setPage('chat'); }}>
+        <button className="new-chat-btn" onClick={() => { setSessionId(null); setMessages([]); setPage('chat'); handleToggleCompact(false); }}>
           <PlusSquare size={16} /> New Chat
         </button>
 
@@ -587,6 +847,9 @@ export default function App() {
           <button className={`topbar-btn ${alwaysOnTop ? 'active' : ''}`} onClick={toggleAlwaysOnTop} title="Toggle Always on Top (Floating Widget)" style={{ color: alwaysOnTop ? 'var(--accent)' : '' }}>
             <Pin size={16} />
           </button>
+          <button className="topbar-btn minimize-maximize-btn" onClick={() => handleToggleCompact(true)} title="Minimize to Floating Search Bar">
+            <Minimize2 size={16} />
+          </button>
           <button className="topbar-btn" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} title="Toggle theme">
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -618,7 +881,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                messages.map(m => <MessageBubble key={m.id} msg={m} onDecide={handleApproval} />)
+                messages.map(m => <MessageBubble key={m.id} msg={m} onDecide={handleApproval} onChecklistSubmit={handleChecklistSubmit} />)
               )}
               {loading && (
                 <div className="msg-row assistant">
@@ -642,29 +905,33 @@ export default function App() {
                   rows={1}
                 />
                 <VoiceButton 
+                  continuousMode={continuousMode}
                   onTranscript={t => {
                     const cleaned = t.replace(/[^a-zA-Z0-9]/g, '').trim();
                     if (cleaned.length === 0) return; // Ignore silent/hallucinated transcripts
 
-                    setMessages(prev => [...prev, {
-                      id: `voice_${Date.now()}`,
-                      role: 'assistant',
-                      content: `🎙️ **Voice Input Received:**\n> "${t}"\n\nShould I send this command?`,
-                      created_at: new Date().toISOString(),
-                      approval_request: {
-                        action_key: `voice_send_${Date.now()}`,
-                        session_id: sessionId || 'voice_input',
-                        original_message: t
-                      },
-                      approvalState: 'pending'
-                    }]);
+                    sendMessage(t);
                   }} 
                   disabled={loading} 
                   isListening={setListening}
                 />
-                <button className="icon-btn send" onClick={() => sendMessage()} disabled={!input.trim() || loading}>
-                  <Send size={16} />
+                <button
+                  className={`icon-btn ${continuousMode ? 'active' : ''}`}
+                  onClick={() => setContinuousMode(!continuousMode)}
+                  title="Continuous Copilot Mode"
+                  style={{ color: continuousMode ? 'var(--success)' : 'var(--text-3)' }}
+                >
+                  <Activity size={16} />
                 </button>
+                {loading ? (
+                  <button className="icon-btn send stop-btn" onClick={stopGeneration} title="Stop Agent" style={{color: 'var(--danger)', background: 'transparent'}}>
+                    <Square size={14} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button className="icon-btn send" onClick={() => sendMessage()} disabled={!input.trim()}>
+                    <Send size={16} />
+                  </button>
+                )}
               </div>
               <div className="input-hint">OmniAgent runs entirely offline · Your data never leaves your machine</div>
             </div>
