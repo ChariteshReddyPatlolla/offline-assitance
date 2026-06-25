@@ -580,7 +580,7 @@ async def chat_endpoint(
     log_metric(session_id, "TotalRequestTime", {"duration": t_request_end - t_request_start})
     return result
 
-
+ 
 @router.post("/submit_checklist", response_model=schemas.Message)
 async def submit_checklist_endpoint(
     req: schemas.ChecklistSubmitRequest,
@@ -621,4 +621,4 @@ async def stop_chat_endpoint(session_id: str):
     from shared.context import cancel_requests
     logger.info("Cancellation requested for session_id: %s", session_id)
     cancel_requests.add(session_id)
-    return {"status": "stopping", "session_id": session_id}
+    return {"status": "stopping", "session_id": session_id} 
